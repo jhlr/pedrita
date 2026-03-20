@@ -7,6 +7,7 @@ import kagglehub as kag
 
 # Configuration
 IMAGE_SIZE = (64, 64)  # Resize images to this size
+IMAGE_MODE = 'L'       # Grayscale
 RANDOM_STATE = 42
 TRAIN_DIR = './dataset/train'
 TEST_DIR = './dataset/test'
@@ -20,7 +21,7 @@ def kaggle_download(folder:str, first:int, last:int):
 		fpath = kag.dataset_download(DATASET, fname)
 		os.rename(fpath, f'./dataset/{fname}')
 	
-def load_images_from_directory(dir_path, label, target_size):
+def load_images_from_directory(dir_path, label, target_size=IMAGE_SIZE):
 	# Load all images from a directory and return flattened feature vectors.
 	images = []
 	labels = []
@@ -30,7 +31,7 @@ def load_images_from_directory(dir_path, label, target_size):
 			try:
 				img_path = os.path.join(dir_path, img_file)
 				# Open and resize image
-				img = Image.open(img_path).convert('L')
+				img = Image.open(img_path).convert(IMAGE_MODE)
 				img = img.resize(target_size)
 				
 				# Convert to numpy array and flatten
@@ -43,21 +44,21 @@ def load_images_from_directory(dir_path, label, target_size):
 	
 	return images, labels
 
-def load_dataset(data_dir, target_size):
+def load_dataset(data_dir, target_size=IMAGE_SIZE):
 	# Load fake and real images from the directory structure.
 	fake_dir = os.path.join(data_dir, 'fake')
 	real_dir = os.path.join(data_dir, 'real')
 	
 	# Load images: 0=fake, 1=real
-	fake_images, fake_labels = load_images_from_directory(fake_dir, label=0, target_size=target_size)
-	real_images, real_labels = load_images_from_directory(real_dir, label=1, target_size=target_size)
+	fake_images, fake_labels = load_images_from_directory(fake_dir, label=0)
+	real_images, real_labels = load_images_from_directory(real_dir, label=1)
 	
 	# Combine
 	images = np.append(fake_images, real_images, axis=0)
 	labels =  np.append(fake_labels, real_labels, axis=0)
 	
 	print(f'Loaded {len(images)} images')
-	print(f'Feature vector size: {images.shape[1]} (from {target_size[0]}x{target_size[1]} images with 3 channels)')
+	print(f'Feature vector size: {images.shape[1]} (from {IMAGE_SIZE[0]}x{IMAGE_SIZE[1]} mode {IMAGE_MODE})')
 	print(f'Class distribution - Fake: {sum(labels==0)}, Real: {sum(labels==1)}')
 	
 	return images, labels
@@ -106,11 +107,11 @@ def feature_importance(model, top_n=10):
 def main():
 	# Load training dataset
 	print('Loading training data...')
-	X_train, y_train = load_dataset(TRAIN_DIR, target_size=IMAGE_SIZE)
+	X_train, y_train = load_dataset(TRAIN_DIR)
 	
 	# Load test dataset
 	print('\nLoading test data...')
-	X_test, y_test = load_dataset(TEST_DIR, target_size=IMAGE_SIZE)
+	X_test, y_test = load_dataset(TEST_DIR)
 	
 	if len(X_train) == 0 or len(X_test) == 0:
 		print('Error: No images found. Check your directory structure.')
