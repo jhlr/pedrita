@@ -1,3 +1,5 @@
+from sklearn.ensemble import RandomForestClassifier as Classifier
+
 pedrita = joblib.load('Pedrita.joblib')
 
 def load_image(fname: str) -> np.ndarray:
