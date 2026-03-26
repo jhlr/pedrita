@@ -1,4 +1,7 @@
 from sklearn.ensemble import RandomForestClassifier as Classifier
+import joblib
+from PIL import Image as image
+from PIL.Image import Image
 
 pedrita = joblib.load('Pedrita.joblib')
 
