@@ -24,6 +24,7 @@ Como importar e usar (exemplos)
 1) Carregar/instanciar o modelo
 
 Agora você pode carregar o modelo diretamente a partir dos módulos `predict` ou `train` — não é necessário importar `helper` explicitamente.
+Ao final do programa ele sera sempre salvo em models/model_temp.pkl, se quiser pode renomear ele ou recarregar o programa diretamente dele
 
 ```python
 from v3 import predict, train
