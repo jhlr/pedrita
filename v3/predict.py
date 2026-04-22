@@ -62,7 +62,7 @@ def predict_and_heatmap(img_bgr) -> tuple[float, np.ndarray]:
 		greyscale = cam(input_tensor=tensor, targets=[tgt])[0] # type: ignore
 		return cv2.resize(greyscale, (img_rgb.shape[1], img_rgb.shape[0]))
 	
-	with GradCAM(model=helper, target_layers=[layer]) as cam:
+	with GradCAM(model=helper.model, target_layers=[layer]) as cam:
 		fake_cam_img = cam_target('fake', cam)
 		real_cam_img = cam_target('real', cam)
 		greyscale = fake_cam_img - real_cam_img
