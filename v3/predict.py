@@ -171,8 +171,6 @@ if __name__ == '__main__':
 	print(dt.now() - now)
 
 	if cam_img is not None:
-		fname = args.image.rsplit('.', 1)[0]
-		fname = fname.rsplit("/", 1)[-1] + '.jpg'
-		fname = f'outputs/{args.model}_{fname}'
+		fname = 'heatmap.jpg'
 		cv2.imwrite(fname, cam_img)
 		print(fname)
