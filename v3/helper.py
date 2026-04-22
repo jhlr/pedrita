@@ -1,7 +1,7 @@
 import os, kagglehub as kag
 from typing import Sequence, cast, Callable
 from glob import glob
-
+import pathlib
 import numpy as np
 import torch, timm, joblib
 from numpy.typing import NDArray
@@ -22,18 +22,20 @@ num_classes = 2
 model: nn.Module = None # type: ignore
 device: torch.device = None # type: ignore
 retrained = False
+BASE_DIR = os.getcwd()
 
 def set_model(model_name: str, /, *, force=False, prefix: str = '') -> torch.nn.Module:
 	global model, num_classes
 	# `num_classes` is a global set to 3; do not accept an override here.
 	prefix = prefix or 'models/'
+	prefix = os.path.join(BASE_DIR, prefix)
 	fnames = [ model_name,
-		f'{prefix}{model_name}_c{num_classes}',
-		f'{prefix}{model_name}_c{num_classes}.pkl',
-		f'{prefix}{model_name}_c{num_classes}.joblib',
-		f'{prefix}{model_name}',
-		f'{prefix}{model_name}.pkl', 
-		f'{prefix}{model_name}.joblib',
+		os.path.join(prefix, f'{model_name}_c{num_classes}'),
+		os.path.join(prefix, f'{model_name}_c{num_classes}.pkl'),
+		os.path.join(prefix, f'{model_name}_c{num_classes}.joblib'),
+		os.path.join(prefix, f'{model_name}'),
+		os.path.join(prefix, f'{model_name}.pkl'), 
+		os.path.join(prefix, f'{model_name}.joblib'),
 	]
 	for name in fnames:
 		try:
