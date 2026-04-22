@@ -23,27 +23,23 @@ model: nn.Module = None # type: ignore
 device: torch.device = None # type: ignore
 retrained = False
 BASE_DIR = os.getcwd()
+# global flag to force CPU usage (can be set via env VERITAS_FORCE_CPU=1 or set_force_cpu())
+force_cpu: bool = False
 
-def set_model(model_name: str, /, *, force=False, prefix: str = '') -> torch.nn.Module:
+def set_model(model_name: str | nn.Module, /, *, force=False, prefix: str = '') -> torch.nn.Module:
 	global model, num_classes
+	if isinstance(model_name, nn.Module):
+		model = model_name
+		model.to(best_device())
+		return model
 	# `num_classes` is a global set to 3; do not accept an override here.
-	prefix = prefix or 'models/'
-	prefix = os.path.join(BASE_DIR, prefix)
-	fnames = [ model_name,
-		os.path.join(prefix, f'{model_name}_c{num_classes}'),
-		os.path.join(prefix, f'{model_name}_c{num_classes}.pkl'),
-		os.path.join(prefix, f'{model_name}_c{num_classes}.joblib'),
-		os.path.join(prefix, f'{model_name}'),
-		os.path.join(prefix, f'{model_name}.pkl'), 
-		os.path.join(prefix, f'{model_name}.joblib'),
-	]
-	for name in fnames:
-		try:
-			model = joblib.load(name)
-			print(name)
-			model.to(best_device())
-			return model
-		except Exception: continue
+	try:
+		model = joblib.load(model_name)
+		print(model_name)
+		model.to(best_device())
+		return model
+	except Exception as e: 
+		print(e)
 	if not force:
 		raise FileNotFoundError(f"Modelo '{model_name}' não encontrado em {fnames}")
 	model = timm.create_model(
@@ -90,8 +86,13 @@ def transform(train: bool = False) -> Callable[[Image], Tensor]:
 		tforms.Normalize(mean=cfg['mean'], std=cfg['std'])
 	])
 
-def best_device() -> torch.device:
-	global device
+def best_device(cpu=False) -> torch.device:
+	global device, force_cpu
+	# honor explicit env or programmatic override
+	if cpu or force_cpu:
+		device = torch.device('cpu')
+		force_cpu = True
+		return device
 	if device is not None:
 		return device
 	# 1. NVIDIA (Padrão ouro para Deep Learning)
@@ -101,10 +102,17 @@ def best_device() -> torch.device:
 		device = torch.device("cuda")
 		return device
 	# 2. Apple Silicon (M1, M2, M3 - Seu cenário atual)
-	elif torch.backends.mps.is_available():
-		print("Apple Silicon (MPS) Detectada.")
-		device = torch.device("mps")
-		return device
+	# 2. Apple Silicon (M1, M2, M3 - Seu cenário atual)
+	# Guard against environments where `torch.backends.mps` may not exist
+	try:
+		mps_backend = getattr(torch.backends, 'mps', None)
+		if mps_backend is not None and getattr(mps_backend, 'is_available', lambda: False)():
+			print("Apple Silicon (MPS) Detectada.")
+			device = torch.device("mps")
+			return device
+	except Exception:
+		# Any unexpected issue checking MPS should fall through to other backends
+		pass
 
 	# 3. AMD / Intel via DirectML (Comum em Windows/Laptops sem NVIDIA)
 	# Requer: pip install torch-directml
@@ -201,6 +209,17 @@ def compare(
 	print(f'Dunno: {pct(d_total):2.1f}%')
 	# return original probabilities array for compatibility
 	return p_final
+
+
+def set_force_cpu(val: bool = True):
+	"""Programmatically force CPU. Also sets `VERITAS_FORCE_CPU` env var for subprocesses."""
+	global force_cpu
+	force_cpu = bool(val)
+	if force_cpu:
+		os.environ['VERITAS_FORCE_CPU'] = '1'
+	else:
+		os.environ.pop('VERITAS_FORCE_CPU', None)
+	return force_cpu
 
 
 import atexit
