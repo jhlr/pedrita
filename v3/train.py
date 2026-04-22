@@ -1,8 +1,6 @@
 import os, torch
 import torch.nn as nn
 
-from . import helper
-
 try: from . import dset, helper
 except ImportError:
 	import helper, dset
