@@ -68,19 +68,18 @@ def train(filepaths: dset.DirDataset | list[str], epochs: int = 3, batch_size: i
 if __name__ == '__main__':
 	import argparse
 	p = argparse.ArgumentParser()
-	p.add_argument('--filelist', '-l', required=False, 
-		default='', 
-		help='newline-separated file with image paths')
 	p.add_argument('--model', '-m', 
 		default='model_temp', 
 		help='model name (e.g. efficientnet_b0, etc.)')
 	p.add_argument('--epochs', '-e', type=int, default=2)
+	p.add_argument('--folder', '-f', type=str, default=None, help='optional folder to read from (overrides --filelist)')
 	args = p.parse_args()
 	filepaths = []
-	if args.filelist:
-		with open(args.filelist, 'r') as fh:
-			filepaths = [l.strip() for l in fh.readlines() if l.strip()]
-	else:
-		filepaths = dset.DirDataset('dataset/train/real', 'dataset/train/fake')
-	helper.set_model(args.model, force=True) # model always uses global num_classes (2)
+	if not args.folder:
+		raise ValueError("Please provide a folder with --folder containing 'real/' and 'fake/' subfolders with training images.")
+	filepaths = dset.DirDataset(
+		os.path.join(args.folder, 'real'), 
+		os.path.join(args.folder, 'fake'), 
+	)
+	helper.set_model(args.model) # model always uses global num_classes (2)
 	train(filepaths=filepaths, epochs=args.epochs)
