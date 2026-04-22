@@ -147,9 +147,11 @@ if __name__ == '__main__':
 	parser.add_argument('--model', '-m', type=str, default='model_temp', help='model name (e.g. efficientnet_b0, etc.)')
 	parser.add_argument('--image', '-i', type=str, default='frame.jpg')
 	parser.add_argument('--eval', '-e', type=str, default=None, help='path to test folder (subfolders per label) to compute accuracy')
+	parser.add_argument('--cpu', action='store_true', help='force CPU usage even if GPU available')
 	args = parser.parse_args()
 	
-	helper.set_model(args.model, force=True)
+	helper.best_device(args.cpu)
+	helper.set_model(args.model)
 	# expose model as module-level name so predict_batch/evaluate use it
 
 	# If evaluation requested, run and exit
