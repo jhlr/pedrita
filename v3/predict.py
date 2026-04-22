@@ -1,176 +1,218 @@
-import torch, cv2
+import os, kagglehub as kag
+from typing import Sequence, cast, Callable
+from glob import glob
+import pathlib
 import numpy as np
+import torch, timm, joblib
+from numpy.typing import NDArray
+
+from PIL import Image as image
 from PIL.Image import Image
 
-from pathlib import Path
-from typing import Sequence
-
+import torch.nn as nn
 from torch import Tensor
-from pytorch_grad_cam import GradCAM
-from pytorch_grad_cam.utils.image import show_cam_on_image
-from pytorch_grad_cam.utils.model_targets import ClassifierOutputTarget
+from torchvision import transforms as tforms
+from torchvision.transforms.functional import to_pil_image
+# type hint for joblib
+from timm.models import EfficientNet 
 
-try: from . import dset, helper
-except ImportError:
-	import helper, dset
+DATASET = 'tristanzhang32/ai-generated-images-vs-real-images'
 
-# 1) Build model (EfficientNet backbone)
+num_classes = 2
+model: nn.Module = None # type: ignore
+device: torch.device = None # type: ignore
+retrained = False
+BASE_DIR = os.getcwd()
 
-# if reset_classifier not available:
-# model.classifier = nn.Linear(in_features, 1)
+def set_model(model_name: str, /, *, force=False, prefix: str = '') -> torch.nn.Module:
+	global model, num_classes
+	# `num_classes` is a global set to 3; do not accept an override here.
+	prefix = prefix or 'models/'
+	prefix = os.path.join(BASE_DIR, prefix)
+	fnames = [ model_name,
+		os.path.join(prefix, f'{model_name}_c{num_classes}'),
+		os.path.join(prefix, f'{model_name}_c{num_classes}.pkl'),
+		os.path.join(prefix, f'{model_name}_c{num_classes}.joblib'),
+		os.path.join(prefix, f'{model_name}'),
+		os.path.join(prefix, f'{model_name}.pkl'), 
+		os.path.join(prefix, f'{model_name}.joblib'),
+	]
+	for name in fnames:
+		try:
+			model = joblib.load(name)
+			print(name)
+			model.to(best_device())
+			return model
+		except Exception: continue
+	if not force:
+		raise FileNotFoundError(f"Modelo '{model_name}' não encontrado em {fnames}")
+	model = timm.create_model(
+		model_name, pretrained=True, 
+		num_classes=num_classes)
+	joblib.dump(model, f'{prefix}{model_name}_c{num_classes}.pkl')
+	print(f"Modelo pré-treinado {model_name} salvo como {prefix}{model_name}_c{num_classes}.pkl")
+	return model
 
-# binary output -> BCEWithLogitsLoss
+def transform(train: bool = False) -> Callable[[Image], Tensor]:
+	"""Return a torchvision transform.
 
-# Match training mapping: 0 = fake, 1 = real
-LABEL_NAMES = ['fake', 'real']
-LABEL = {n: i for i, n in enumerate(LABEL_NAMES)}
-
-set_model = helper.set_model
-
-def predict_and_heatmap(img_bgr) -> tuple[float, np.ndarray]:
-	"""Return `real` probability and heatmap(s).
-
-	- If `both=False` (default) returns: `(real_prob, heatmap_fake_or_None)` (backwards-compatible).
-	- If `both=True` returns: `(real_prob, heatmap_fake_or_None, heatmap_real_or_None)`.
-
-	Gate: if `real_prob >= thresh` returns heatmaps as None (same behavior as before).
+	If `train` is True, include common augmentations useful for transfer
+	learning. When False, use a deterministic evaluation transform.
 	"""
-	img_rgb = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB).astype(np.uint8)
-	tr = helper.transform()
-	device = helper.best_device()
-	tensor = tr(img_rgb).unsqueeze(0).to(device)
+	cfg = getattr(model, 'default_cfg', dict(
+		input_size=(224, 224),
+		mean=(0.485, 0.456, 0.406),
+		std=(0.229, 0.224, 0.225),
+	))
+	orig = cfg['input_size']
+	isize = orig[:]
+	for i, v in enumerate(orig):
+		if v < 10:
+			isize = isize[:i] + isize[i+1:]
 
-	helper.model.eval()
-	with torch.no_grad():
-		logits = helper.model(tensor)
+	# `isize` should now be a tuple like (H, W) or a single int tuple
+	size = isize if isinstance(isize, (tuple, list)) else (isize, isize)
 
-	probs = torch.softmax(logits.detach().squeeze(0), dim=0) if isinstance(logits, torch.Tensor) else torch.tensor(np.array(logits)).float()
-	real_prob = float(probs[LABEL['real']].item())
+	return tforms.Compose([
+		tforms.Lambda(to_pil),
+		tforms.ToTensor(),
+		tforms.Resize(size),
+		tforms.RandomPerspective(distortion_scale=0.2, p=0.5),
+		tforms.RandomHorizontalFlip(p=0.5),
+		tforms.RandomVerticalFlip(p=0.5),
+		tforms.RandomAffine(degrees=10, translate=(0.05,0.05), scale=(0.95,1.05), shear=5),
+		tforms.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2, hue=0.05),
+		tforms.Normalize(mean=cfg['mean'], std=cfg['std'])
+	]) if train else tforms.Compose([
+		tforms.Lambda(to_pil),
+		tforms.ToTensor(),
+		tforms.Resize(size),
+		tforms.Normalize(mean=cfg['mean'], std=cfg['std'])
+	])
 
-	# find last Conv2d as target layer
-	layer = getattr(helper, 'conv_head', None)
-	if layer is None:
-		for m in reversed(list(helper.model.modules())):
-			if isinstance(m, torch.nn.Conv2d):
-				layer = m
+def best_device() -> torch.device:
+	global device
+	if device is not None:
+		return device
+	# 1. NVIDIA (Padrão ouro para Deep Learning)
+	if torch.cuda.is_available():
+		device_name = torch.cuda.get_device_name(0)
+		print(f"NVIDIA Detectada: {device_name}")
+		device = torch.device("cuda")
+		return device
+	# 2. Apple Silicon (M1, M2, M3 - Seu cenário atual)
+	elif torch.backends.mps.is_available():
+		print("Apple Silicon (MPS) Detectada.")
+		device = torch.device("mps")
+		return device
+
+	# 3. AMD / Intel via DirectML (Comum em Windows/Laptops sem NVIDIA)
+	# Requer: pip install torch-directml
+	try:
+		import torch_directml # type: ignore
+		if torch_directml.is_available():
+			print("AMD/Intel (DirectML) Detectada.")
+			device = torch_directml.device()
+			return device
+	except ImportError: pass
+
+	# 4. Intel XPU (Específico para placas Intel Arc / Data Centers)
+	if hasattr(torch, 'xpu') and torch.xpu.is_available():
+		print("Intel XPU Detectada.")
+		device = torch.device("xpu")
+		return device
+	device = torch.device("cpu")
+	return device
+
+def to_pil(img) -> Image:
+	if isinstance(img, str):
+		img = image.open(img)
+	if not isinstance(img, Image):
+		return cast(Image, to_pil_image(img))
+	# Handle palette images with transparency (P mode with tRNS) and other
+	# alpha-bearing formats. Convert such images to RGBA first to avoid the
+	# PIL user warning, then composite onto a white background and return RGB.
+	if img.mode == 'P':
+		# PIL uses 'transparency' info for palette-based alpha
+		if 'transparency' in getattr(img, 'info', {}):
+			img = img.convert('RGBA')
+			bg = image.new('RGBA', img.size, (255, 255, 255, 255))
+			img = image.alpha_composite(bg, img).convert('RGB')
+		else:
+			img = img.convert('RGB')
+	elif img.mode in ('RGBA', 'LA'):
+		# Composite alpha over white background
+		bg = image.new('RGBA', img.size, (255, 255, 255, 255))
+		img = image.alpha_composite(bg, img.convert('RGBA')).convert('RGB')
+	elif img.mode != 'RGB':
+		img = img.convert('RGB')
+	return img
+
+pixel = np.uint8
+
+# kaggle_download('train/fake', 401, 500)
+# ou 'train/real', 'test/fake', 'test/real'
+def kaggle_download(folder:str, first:int, last:int, fext=['jpg', 'png', 'jpeg']):
+	if isinstance(fext, str):
+		fext = fext.lstrip('.')
+		fext = [fext]
+	if isinstance(fext, list | tuple):
+		fext = [x.lstrip('.') for x in fext]
+	for i in range(first, last+1):
+		for x in range(len(fext)):
+			try:
+				fname = f'{folder}/{i:04d}.{fext[x]}'
+				if os.path.exists(f'./dataset/{fname}'): break
+				fpath = kag.dataset_download(DATASET, fname)
+				os.rename(fpath, f'./dataset/{fname}')
 				break
-		if layer is None:
-			raise RuntimeError('target layer for Grad-CAM not found')
-
-	def cam_target(label: str, cam: GradCAM):
-		tgt = ClassifierOutputTarget(LABEL[label])
-		greyscale = cam(input_tensor=tensor, targets=[tgt])[0] # type: ignore
-		return cv2.resize(greyscale, (img_rgb.shape[1], img_rgb.shape[0]))
+			except Exception: pass
 	
-	with GradCAM(model=helper.model, target_layers=[layer]) as cam:
-		fake_cam_img = cam_target('fake', cam)
-		real_cam_img = cam_target('real', cam)
-		greyscale = fake_cam_img - real_cam_img
-		min, max = greyscale.min(), greyscale.max()
-		greyscale = (greyscale - min) / (max - min + 1e-8)
-		cam_img = show_cam_on_image(img_rgb.astype(np.float32) / 255.0, greyscale, use_rgb=True)
-		cam_img = cv2.cvtColor(cam_img, cv2.COLOR_RGB2BGR)
-	return real_prob, cam_img
+def compare(
+	p_final: NDArray[np.float64] | Sequence[float], 
+	y_test: NDArray[np.float64] | Sequence[float], thresh=0.6
+) -> NDArray[np.float64]:
+	'''Print simple evaluation statistics and return the probabilities.
 
-def predict(img_bgr) -> float:
-	tr = helper.transform(); device = helper.best_device()
-	img_rgb = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB).astype(np.uint8)
-	with torch.no_grad():
-		probs = helper.model(tr(img_rgb).unsqueeze(0).to(device))
-	p = torch.softmax(probs, dim=1)[:, LABEL['real']].squeeze().item()
-	return p
+	Metrics printed are percentages of wrong/sure/dunno relative to the
+	total number of samples.
+	'''
+	p_final = np.asarray(p_final)
+	y_test = np.array(y_test)
+
+	is_real = y_test >= 0.999
+	is_fake = y_test <= 0.001
+	is_high = p_final > thresh
+	is_low = p_final < (1 - thresh)
+
+	# WRONG: final verdict strongly on wrong side
+	w_total = np.sum(is_fake & is_high) + np.sum(is_real & is_low)
+	# SURE: strong correct verdicts
+	s_total = np.sum(is_real & is_high) + np.sum(is_fake & is_low)
+	# DUNNO: remaining in gray zone
+	d_total = np.sum(~(is_high | is_low))
+	total = len(y_test)
+
+	pct = lambda x: x * 100.0 / total if total else 0.0
+
+	print(f'Total: {total}')
+	print(f'Wrong: {pct(w_total):2.1f}%')
+	print(f'Sure:  {pct(s_total):2.1f}%')
+	print(f'Dunno: {pct(d_total):2.1f}%')
+	# return original probabilities array for compatibility
+	return p_final
 
 
-def predict_batch(imgs_bgr: Sequence | Tensor) -> np.ndarray:
-	"""Predict a batch. Delegate loading/conversion to `model.transform()`.
+import atexit
+@atexit.register
+def save_model_on_exit():
+	global model, retrained
+	if model is None or not retrained:
+		return
+	os.makedirs('models', exist_ok=True)
+	mpath = 'models/model_temp.pkl'
+	joblib.dump(model, mpath)
+	print(mpath)
 
-	Inputs accepted:
-	- `Tensor` (N,C,H,W) or (C,H,W)
-	- sequence of `Tensor` (C,H,W)
-	- sequence of numpy arrays, PIL Images, or path-like objects
-	"""
-	if not imgs_bgr or not len(imgs_bgr):
-		return np.array([])
 
-	# single tensor batch
-	if isinstance(imgs_bgr, Tensor) and imgs_bgr.ndim == 3:
-		imgs_bgr.unsqueeze_(0).unsqueeze_(0)
-	
-	# sequence of tensors -> assume already transformed
-	tr = helper.transform()
-	tensors = []
-	for t in imgs_bgr:
-		if not isinstance(t, Tensor):
-			t = tr(t)
-		if t.ndim == 4 and t.shape[0] == 1:
-			t = t.squeeze(0)
-		tensors.append(t)
-	batch = torch.stack(tensors)
-	device = helper.best_device()
-	if batch.device.type != device.type:
-		batch = batch.to(device)
-	with torch.no_grad():
-		logits = helper.model(batch)
-	return torch.softmax(logits, dim=1)[:, LABEL['real']].cpu().numpy()
 
-def evaluate_folder(test_dir: str, batch_size: int = 16, thresh: float = 0.6):
-	"""Evaluate a test folder using dset.DirDataset, predict_batch and helper.compare.
-
-	Expects `test_dir` to contain subfolders `real/` and `fake/`.
-	This function uses the dataset discovery from `dset.DirDataset` (samples list),
-	reads images with OpenCV (BGR), runs `predict_batch` and then maps labels to
-	the ground-truth encoding expected by `helper.compare` (real=0.999, fake=0.001).
-	"""
-	td = Path(test_dir)
-	ds = dset.DirDataset(str(td / 'real'), str(td / 'fake'), shuffle=True)
-	
-	probs, ylabels = [], []
-	for i in range(0, len(ds), batch_size):
-		batch = [ds[j] for j in range(i, min(i + batch_size, len(ds)))]
-		imgs, labels = zip(*batch)
-		if not imgs: continue
-		batch_probs = predict_batch(imgs)
-		probs.extend(list(batch_probs))
-		ylabels.extend([1 if int(l)==1 else 0 for l in labels[:len(batch_probs)]])
-
-	p_arr = np.array(probs)
-	helper.compare(p_arr, ylabels, thresh=thresh)
-	return p_arr, ylabels
-
-# Example usage
-if __name__ == '__main__':
-	import argparse
-	from datetime import datetime as dt
-	# get cli arguments
-
-	parser = argparse.ArgumentParser()
-	parser.add_argument('--model', '-m', type=str, default='model_temp', help='model name (e.g. efficientnet_b0, etc.)')
-	parser.add_argument('--image', '-i', type=str, default='frame.jpg')
-	parser.add_argument('--eval', '-e', type=str, default=None, help='path to test folder (subfolders per label) to compute accuracy')
-	args = parser.parse_args()
-	
-	helper.set_model(args.model, force=True)
-	# expose model as module-level name so predict_batch/evaluate use it
-
-	# If evaluation requested, run and exit
-	if args.eval is not None:
-		now = dt.now()
-		evaluate_folder(args.eval)
-		print(dt.now() - now)
-		exit(0)
-
-	img = cv2.imread(args.image)
-	if img is None:
-		raise SystemExit('frame.jpg not found or unreadable')
-	
-	now = dt.now()
-	prob, cam_img = predict_and_heatmap(img)
-	print(f'Proba real: {prob*100:.2f} %')
-	print(dt.now() - now)
-
-	if cam_img is not None:
-		fname = args.image.rsplit('.', 1)[0]
-		fname = fname.rsplit("/", 1)[-1] + '.jpg'
-		fname = f'outputs/{args.model}_{fname}'
-		cv2.imwrite(fname, cam_img)
-		print(fname)
