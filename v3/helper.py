@@ -26,27 +26,54 @@ BASE_DIR = os.getcwd()
 # global flag to force CPU usage (can be set via env VERITAS_FORCE_CPU=1 or set_force_cpu())
 force_cpu: bool = False
 
-def set_model(model_name: str | nn.Module, /, *, force=False, prefix: str = '') -> torch.nn.Module:
+def set_model(model_name: str | nn.Module, /, force: bool = False) -> torch.nn.Module:
 	global model, num_classes
 	if isinstance(model_name, nn.Module):
 		model = model_name
 		model.to(best_device())
 		return model
 	# `num_classes` is a global set to 3; do not accept an override here.
+	# Try to load with torch.load using map_location='cpu' first to avoid
+	# errors when the saved file references MPS/CUDA devices not present
+	# on the current host. Fallback to joblib.load if torch.load fails.
+	loaded = None
 	try:
-		model = joblib.load(model_name)
+		loaded = torch.load(model_name, map_location='cpu')
+	except Exception:
+		try:
+			loaded = joblib.load(model_name)
+		except Exception as e:
+			print(f'failed to load {model_name}: {e}')
+			loaded = None
+	# If file contains a module instance
+	if isinstance(loaded, nn.Module):
+		model = loaded
 		print(model_name)
 		model.to(best_device())
 		return model
-	except Exception as e: 
-		print(e)
+	# If file contains a state_dict, try to construct model via timm
+	if isinstance(loaded, dict):
+		try:
+			m = timm.create_model(model_name, pretrained=False, num_classes=num_classes)
+			# support both state_dict and full checkpoint structures
+			state = loaded.get('state_dict', loaded)
+			# normalize keys if saved from DataParallel
+			state = {k.replace('module.', ''): v for k, v in state.items()}
+			m.load_state_dict(state)
+			model = m
+			print(model_name)
+			model.to(best_device())
+			return model
+		except Exception as e:
+			print(f'failed to build model from state in {model_name}: {e}')
+			# fallback: continue to next candidate
 	if not force:
-		raise FileNotFoundError(f"Modelo '{model_name}' não encontrado em {fnames}")
+		raise FileNotFoundError(f"Modelo '{model_name}' não encontrado em {model_name}")
 	model = timm.create_model(
 		model_name, pretrained=True, 
 		num_classes=num_classes)
-	joblib.dump(model, f'{prefix}{model_name}_c{num_classes}.pkl')
-	print(f"Modelo pré-treinado {model_name} salvo como {prefix}{model_name}_c{num_classes}.pkl")
+	joblib.dump(model, f'{model_name}_c{num_classes}.pkl')
+	print(f"Modelo pré-treinado {model_name} salvo como {model_name}_c{num_classes}.pkl")
 	return model
 
 def transform(train: bool = False) -> Callable[[Image], Tensor]:
@@ -230,7 +257,9 @@ def save_model_on_exit():
 		return
 	os.makedirs('models', exist_ok=True)
 	mpath = 'models/model_temp.pkl'
-	joblib.dump(model, mpath)
+	cpu = torch.device('cpu')
+	m = model.to(cpu)
+	joblib.dump(m, mpath)
 	print(mpath)
 
 
