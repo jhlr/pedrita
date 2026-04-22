@@ -24,7 +24,6 @@ Como importar e usar (exemplos)
 1) Carregar/instanciar o modelo
 
 Agora você pode carregar o modelo diretamente a partir dos módulos `predict` ou `train` — não é necessário importar `helper` explicitamente.
-Ao final do programa ele sera sempre salvo em models/model_temp.pkl, se quiser pode renomear ele ou recarregar o programa diretamente dele
 
 ```python
 from v3 import predict, train
@@ -98,3 +97,60 @@ Notas importantes
 - Você pode usar `predict.set_model()` ou `train.set_model()` para carregar/definir o modelo global; não é necessário chamar `helper.set_model()` diretamente.
 - As leituras/escritas de imagens usam OpenCV (BGR).
 - `helper.transform()` fornece o pipeline de pré-processamento compatível com o modelo carregado.
+
+**Estatísticas Atuais e Como Gerá-las**
+
+O repositório não embute números estáticos neste README para evitar divergência com execuções locais e modelos atualizados. Para gerar as estatísticas atuais (AUC, acurácia, curva ROC, etc.) execute a avaliação de teste usando a função de avaliação ou a CLI:
+
+- Via CLI (avalia toda a pasta `dataset/test` com subpastas `real/` e `fake/`):
+
+```bash
+python v3/predict.py --model <nome_modelo> --eval dataset/test
+```
+
+Isso imprimirá o tempo de execução e chamará internamente `model.compare()` para gerar métricas e plots (quando aplicável). Os vetores de probabilidade retornados pela função também são usados para calcular métricas programaticamente.
+
+- Via import (programaticamente):
+
+```python
+from v3 import predict
+predict.set_model('model_temp', force=True)
+probs, gts = predict.evaluate_folder('dataset/test', batch_size=16, thresh=0.6)
+# probs: numpy array com probabilidades por amostra
+# gts: lista de rótulos ground-truth (0/1)
+
+# Para calcular métricas customizadas use sklearn.metrics
+from sklearn.metrics import roc_auc_score, accuracy_score
+auc = roc_auc_score(gts, probs)
+print('AUC:', auc)
+```
+
+Onde `probs` é um array de probabilidades (classe `real`) produzido por `predict_batch`.
+
+Onde procurar resultados:
+- Arquivos de saída (heatmaps, imagens anotadas) são gravados em `outputs/` pelo CLI quando aplicável.
+- Modelos treinados e calibradores ficam em `models/`.
+
+Se você quiser que eu inclua números concretos (por exemplo, AUC, Accuracy, recall) nesta seção, envie as métricas obtidas localmente ou autorize-me a rodar a avaliação aqui.
+
+**Uso via CLI (resumo rápido)**
+
+- Avaliar uma pasta de teste:
+
+```bash
+python v3/predict.py -m pedrita2 --eval dataset/test
+```
+
+- Predizer uma imagem e salvar heatmap (quando disponível):
+
+```bash
+python v3/predict.py -m pedrita2 -i path/to/image.jpg
+```
+
+Boas práticas para integração
+- Encapsule chamadas em wrappers da infraestrutura para lidar com logs, tratamento de exceções e paths relativos.
+- Use `helper.best_device()` para verificar o dispositivo e mover tensores/modelo quando necessário.
+
+Se quiser, eu também:
+- acrescento um exemplo de `filelist.txt` em `dataset/`;
+- crio `requirements.txt` com versões exatas usadas no ambiente.
