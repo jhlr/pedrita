@@ -11,24 +11,20 @@ from PIL.Image import Image
 
 import torch.nn as nn
 from torch import Tensor
-from torchvision import transforms
+from torchvision import transforms as tforms
 from torchvision.transforms.functional import to_pil_image
 # type hint for joblib
 from timm.models import EfficientNet 
 
-
 DATASET = 'tristanzhang32/ai-generated-images-vs-real-images'
-# DATASET_FOLDER = f'/kaggle/input/datasets/{DATASET}'
-# TRAIN_DIR = DATASET_FOLDER + '/train'
-# TEST_DIR  = DATASET_FOLDER + '/test'
 
 num_classes = 2
 model: nn.Module = None # type: ignore
 device: torch.device = None # type: ignore
+retrained = False
 
 def set_model(model_name: str, /, *, force=False, prefix: str = '') -> torch.nn.Module:
-	global model
-	global num_classes
+	global model, num_classes
 	# `num_classes` is a global set to 3; do not accept an override here.
 	prefix = prefix or 'models/'
 	fnames = [ model_name,
@@ -42,7 +38,7 @@ def set_model(model_name: str, /, *, force=False, prefix: str = '') -> torch.nn.
 	for name in fnames:
 		try:
 			model = joblib.load(name)
-			print(name, 'carregado com sucesso')
+			print(name)
 			model.to(best_device())
 			return model
 		except Exception: continue
@@ -55,7 +51,12 @@ def set_model(model_name: str, /, *, force=False, prefix: str = '') -> torch.nn.
 	print(f"Modelo pré-treinado {model_name} salvo como {prefix}{model_name}_c{num_classes}.pkl")
 	return model
 
-def transform() -> Callable[[Image], Tensor]:
+def transform(train: bool = False) -> Callable[[Image], Tensor]:
+	"""Return a torchvision transform.
+
+	If `train` is True, include common augmentations useful for transfer
+	learning. When False, use a deterministic evaluation transform.
+	"""
 	cfg = getattr(model, 'default_cfg', dict(
 		input_size=(224, 224),
 		mean=(0.485, 0.456, 0.406),
@@ -66,15 +67,25 @@ def transform() -> Callable[[Image], Tensor]:
 	for i, v in enumerate(orig):
 		if v < 10:
 			isize = isize[:i] + isize[i+1:]
-	# Accept PIL Images or tensors/ndarrays. Do not force conversion to PIL first,
-	# because calling code may already pass a PIL Image.
-	# Ensure PIL grayscale images are converted to RGB so normalization
-	# broadcasts correctly across 3 channels.
-	return transforms.Compose([
-		transforms.Lambda(to_pil),
-		transforms.Resize(isize),
-		transforms.ToTensor(),
-		transforms.Normalize(mean=cfg['mean'], std=cfg['std'])
+
+	# `isize` should now be a tuple like (H, W) or a single int tuple
+	size = isize if isinstance(isize, (tuple, list)) else (isize, isize)
+
+	return tforms.Compose([
+		tforms.Lambda(to_pil),
+		tforms.ToTensor(),
+		tforms.Resize(size),
+		tforms.RandomPerspective(distortion_scale=0.2, p=0.5),
+		tforms.RandomHorizontalFlip(p=0.5),
+		tforms.RandomVerticalFlip(p=0.5),
+		tforms.RandomAffine(degrees=10, translate=(0.05,0.05), scale=(0.95,1.05), shear=5),
+		tforms.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2, hue=0.05),
+		tforms.Normalize(mean=cfg['mean'], std=cfg['std'])
+	]) if train else tforms.Compose([
+		tforms.Lambda(to_pil),
+		tforms.ToTensor(),
+		tforms.Resize(size),
+		tforms.Normalize(mean=cfg['mean'], std=cfg['std'])
 	])
 
 def best_device() -> torch.device:
@@ -84,12 +95,12 @@ def best_device() -> torch.device:
 	# 1. NVIDIA (Padrão ouro para Deep Learning)
 	if torch.cuda.is_available():
 		device_name = torch.cuda.get_device_name(0)
-		print(f"🚀 GPU NVIDIA Detectada: {device_name}")
+		print(f"NVIDIA Detectada: {device_name}")
 		device = torch.device("cuda")
 		return device
 	# 2. Apple Silicon (M1, M2, M3 - Seu cenário atual)
 	elif torch.backends.mps.is_available():
-		print("🍏 GPU Apple Silicon (MPS) Detectada.")
+		print("Apple Silicon (MPS) Detectada.")
 		device = torch.device("mps")
 		return device
 
@@ -98,88 +109,63 @@ def best_device() -> torch.device:
 	try:
 		import torch_directml # type: ignore
 		if torch_directml.is_available():
-			print("📦 GPU AMD/Intel (DirectML) Detectada.")
+			print("AMD/Intel (DirectML) Detectada.")
 			device = torch_directml.device()
 			return device
 	except ImportError: pass
 
 	# 4. Intel XPU (Específico para placas Intel Arc / Data Centers)
 	if hasattr(torch, 'xpu') and torch.xpu.is_available():
-		print("🔵 GPU Intel XPU Detectada.")
+		print("Intel XPU Detectada.")
 		device = torch.device("xpu")
 		return device
 	device = torch.device("cpu")
 	return device
-
-def to_tensor(img) -> Tensor:
-	"""Convert images to CHW (C,H,W) tensors. For lists, return NCHW."""
-	if isinstance(img, list):
-		return torch.stack([to_tensor(i) for i in img])
-	if isinstance(img, str):
-		img = image.open(img)
-	if isinstance(img, Image) and img.mode != 'RGB':
-		img = img.convert('RGB')
-	if not isinstance(img, Tensor):
-		img = torch.as_tensor(np.array(img))
-	# enforce 4D
-	if img.ndim > 4: img.squeeze_()
-	while img.ndim < 4: img.unsqueeze_(0)
-
-	if img.shape[-1] in (1, 3):
-		img = img.permute(0, 3, 1, 2)
-	if img.shape[1] == 1:
-		img = img.expand(-1, 3, -1, -1)
-	return img
-
-def enforce_uint8(img, max=False) -> Tensor:
-	img = to_tensor(img)
-	if img.is_floating_point() and (max or img.max() <= 1.0):
-		img = img * 255.0
-	return img.to(torch.uint8)
-
-def enforce_frac(img, max=False) -> Tensor:
-	img = to_tensor(img)
-	hi_flot = img.is_floating_point() and (max or img.max() > 1.0)
-	if img.dtype == torch.uint8 or hi_flot:
-		img = img.float() / 255.0
-	return img.clamp(0.0, 1.0)
-
-def resize(img, h = 224, w = None) -> Tensor:
-	if w is None: w = h
-	if isinstance(img, list | tuple):
-		tensors = [resize(i, h, w) for i in img]
-		# inner resize returns a batched tensor of shape (1, C, H, W) for single images;
-		# remove that extra leading dim before stacking to produce (N, C, H, W)
-		normalized = [t.squeeze(0) if (t.ndim == 4 and t.shape[0] == 1) else t for t in tensors]
-		return torch.stack(normalized)
-	img = to_tensor(img)
-	return torch.nn.functional.interpolate(img.float(), 
-		size=(h, w), mode='bilinear', align_corners=False)
 
 def to_pil(img) -> Image:
 	if isinstance(img, str):
 		img = image.open(img)
 	if not isinstance(img, Image):
 		return cast(Image, to_pil_image(img))
-	if img.mode != 'RGB':
+	# Handle palette images with transparency (P mode with tRNS) and other
+	# alpha-bearing formats. Convert such images to RGBA first to avoid the
+	# PIL user warning, then composite onto a white background and return RGB.
+	if img.mode == 'P':
+		# PIL uses 'transparency' info for palette-based alpha
+		if 'transparency' in getattr(img, 'info', {}):
+			img = img.convert('RGBA')
+			bg = image.new('RGBA', img.size, (255, 255, 255, 255))
+			img = image.alpha_composite(bg, img).convert('RGB')
+		else:
+			img = img.convert('RGB')
+	elif img.mode in ('RGBA', 'LA'):
+		# Composite alpha over white background
+		bg = image.new('RGBA', img.size, (255, 255, 255, 255))
+		img = image.alpha_composite(bg, img.convert('RGBA')).convert('RGB')
+	elif img.mode != 'RGB':
 		img = img.convert('RGB')
 	return img
 
 pixel = np.uint8
 
-def blend(a: Tensor, b: Tensor, alpha: float | Tensor) -> Tensor:
-	# alpha pode ser escalar ou tensor broadcastable
-	return a * (1.0 - alpha) + b * alpha
-
 # kaggle_download('train/fake', 401, 500)
 # ou 'train/real', 'test/fake', 'test/real'
-def kaggle_download(folder:str, first:int, last:int):
+def kaggle_download(folder:str, first:int, last:int, fext=['jpg', 'png', 'jpeg']):
+	if isinstance(fext, str):
+		fext = fext.lstrip('.')
+		fext = [fext]
+	if isinstance(fext, list | tuple):
+		fext = [x.lstrip('.') for x in fext]
 	for i in range(first, last+1):
-		fname = f'{folder}/{i:04d}.jpg'
-		fpath = kag.dataset_download(DATASET, fname)
-		os.rename(fpath, f'./dataset/{fname}')
+		for x in range(len(fext)):
+			try:
+				fname = f'{folder}/{i:04d}.{fext[x]}'
+				if os.path.exists(f'./dataset/{fname}'): break
+				fpath = kag.dataset_download(DATASET, fname)
+				os.rename(fpath, f'./dataset/{fname}')
+				break
+			except Exception: pass
 	
-
 def compare(
 	p_final: NDArray[np.float64] | Sequence[float], 
 	y_test: NDArray[np.float64] | Sequence[float], thresh=0.6
@@ -192,26 +178,10 @@ def compare(
 	p_final = np.asarray(p_final)
 	y_test = np.array(y_test)
 
-	# Only consider definite ground-truth labels for reporting:
-	# treat values >=0.999 as Real, <=0.001 as Fake. Any intermediate
-	# values (the 'maybe' ground truth) are excluded from metrics so
-	# they are neither punished nor rewarded.
-	is_real_gt = y_test >= 0.999
-	is_fake_gt = y_test <= 0.001
-	definite_mask = is_real_gt | is_fake_gt
-
-	if definite_mask.sum() == 0:
-		print('No definite Real/Fake ground-truth samples to report on.')
-		return p_final
-
-	# filter arrays to only definite samples for metric computation
-	pf = p_final[definite_mask]
-	yf = y_test[definite_mask]
-
-	is_real = yf >= 0.999
-	is_fake = yf <= 0.001
-	is_high = pf > thresh
-	is_low = pf < (1 - thresh)
+	is_real = y_test >= 0.999
+	is_fake = y_test <= 0.001
+	is_high = p_final > thresh
+	is_low = p_final < (1 - thresh)
 
 	# WRONG: final verdict strongly on wrong side
 	w_total = np.sum(is_fake & is_high) + np.sum(is_real & is_low)
@@ -219,11 +189,11 @@ def compare(
 	s_total = np.sum(is_real & is_high) + np.sum(is_fake & is_low)
 	# DUNNO: remaining in gray zone
 	d_total = np.sum(~(is_high | is_low))
-	total = len(yf)
+	total = len(y_test)
 
 	pct = lambda x: x * 100.0 / total if total else 0.0
 
-	print(f'Total (definite samples): {total}')
+	print(f'Total: {total}')
 	print(f'Wrong: {pct(w_total):2.1f}%')
 	print(f'Sure:  {pct(s_total):2.1f}%')
 	print(f'Dunno: {pct(d_total):2.1f}%')
@@ -234,16 +204,13 @@ def compare(
 import atexit
 @atexit.register
 def save_model_on_exit():
-	"""Best-effort save: write a torch checkpoint with model and optional optimizer/epoch."""
-	global model
-	if model is None:
+	global model, retrained
+	if model is None or not retrained:
 		return
 	os.makedirs('models', exist_ok=True)
 	mpath = 'models/model_temp.pkl'
 	joblib.dump(model, mpath)
 	print(mpath)
 
-if __name__ == '__main__':
-	kaggle_download("train/real", 1501, 2000)
-	kaggle_download("train/fake", 1001, 1500)
-	kaggle_download("train/fake", 1501, 2000)
+
+
