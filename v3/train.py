@@ -1,72 +1,71 @@
 import os, torch
 import torch.nn as nn
-import helper, dset
 
-LABEL_NAMES = ['fake', 'real']
-LABEL_TO_IDX = {n: i for i, n in enumerate(LABEL_NAMES)}
+from . import helper
+
+try: from . import dset, helper
+except ImportError:
+	import helper, dset
 
 set_model = helper.set_model
 
-def train_head(filepaths: dset.Dataset | list[str], epochs: int = 3, batch_size: int = 16):
-	"""Train head for two-class detection: 0=fake, 1=real.
-
-	This version uses a standard CrossEntropy loss over definite labels.
-	"""
+def train(filepaths: dset.DirDataset | list[str], epochs: int = 3, batch_size: int = 32):
+	# Train head for two-class detection: 0=fake, 1=real.
+	# This version uses a standard CrossEntropy loss over definite labels.
 	if filepaths is None:
 		raise ValueError("filepaths must be provided (use --filelist to pass a newline-separated file of paths)")
-	tr = helper.transform()
+
+	# training transform (with augmentations)
+	tr = helper.transform(train=True)
+	ds = filepaths if isinstance(filepaths, dset.DirDataset) \
+	else dset.SimpleFileDataset(filepaths, transform=tr)
+	ds.transform = tr
 	device = helper.best_device()
 
-	ds = filepaths if isinstance(filepaths, dset.Dataset) \
-	else dset.SimpleFileDataset(filepaths, transform=tr)
+	train_loader = torch.utils.data.DataLoader(ds, batch_size=batch_size, shuffle=True, num_workers=4)
 
-	dloader = torch.utils.data.DataLoader(ds, batch_size=batch_size, shuffle=True, num_workers=4)
+	# For simplicity: fully fine-tune the model (unfreeze all params)
+	for p in helper.model.parameters():
+		p.requires_grad = True
 
-	model = helper.model
-	for name, p in model.named_parameters():
-		p.requires_grad = 'classifier' in name or 'head' in name or 'fc' in name
-
-	model.to(device)
-	opt = torch.optim.Adam([p for p in model.parameters() if p.requires_grad], lr=1e-3)
-
-	# standard classification loss (two classes)
-	criterion = nn.CrossEntropyLoss(reduction='sum')
-
-	model.train()
-	# canonical class count
-	n_classes = getattr(helper, 'num_classes', 2)
-
+	helper.model.to(device)
+	opt = torch.optim.AdamW(helper.model.parameters(), 
+		lr=1e-4, weight_decay=1e-5)
+	# Reduce LR when a monitored metric has stopped improving.
+	scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+		opt, mode='min', factor=0.5, patience=1)
+	criterion = nn.CrossEntropyLoss(reduction='mean')
 	for epoch in range(epochs):
+		helper.model.train()
 		total_loss = 0.0
 		total = 0
-		in_allowed = 0
-		for batch in dloader:
-			# dataset returns (tensor, label)
+		correct_total = 0
+		for batch in train_loader:
 			xb, yb = batch
-
 			xb = xb.to(device)
 			yb = yb.to(device)
 
-			logits = model(xb)
+			logits = helper.model(xb)
 			loss = criterion(logits, yb)
 
-			# single backward/step per batch
 			opt.zero_grad()
 			loss.backward()
 			opt.step()
 
-			# accumulate stats over all samples in the batch
 			batch_size_actual = int(yb.size(0))
-			loss_value = float(loss.detach().cpu().item())
-			total_loss += loss_value
-			preds = logits.detach().argmax(dim=1)
-			correct = int((preds == yb).sum().item())
-			in_allowed += correct
 			total += batch_size_actual
+			total_loss += float(loss.detach().cpu().item())
+			preds = logits.detach().argmax(dim=1)
+			correct_total += int((preds == yb).sum().item())
 
-		avg_loss = total_loss / total if total > 0 else float('nan')
-		in_allowed_rate = in_allowed / total if total > 0 else 0.0
-		print(f'Epoch {epoch+1}/{epochs} loss={avg_loss:.4f} acc={in_allowed_rate:.3f}')
+		train_acc = correct_total / total if total > 0 else 0.0
+		scheduler.step(train_acc)
+		current_lr = opt.param_groups[0]['lr']
+		print(f'Epoch {epoch+1}/{epochs}', 
+			f'loss={total_loss:.4f}',
+			f'acc={train_acc:.3f}',
+			f'lrate={current_lr:.2e}')
+	helper.retrained = True
 
 if __name__ == '__main__':
 	import argparse
@@ -85,5 +84,5 @@ if __name__ == '__main__':
 			filepaths = [l.strip() for l in fh.readlines() if l.strip()]
 	else:
 		filepaths = dset.DirDataset('dataset/train/real', 'dataset/train/fake')
-	set_model(args.model, force=True) # model always uses global num_classes (2)
-	train_head(filepaths=filepaths, epochs=args.epochs)
+	helper.set_model(args.model, force=True) # model always uses global num_classes (2)
+	train(filepaths=filepaths, epochs=args.epochs)
