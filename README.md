@@ -1,156 +1,117 @@
-# Veritas — Uso via import (Python API)
+# Pedrita — Classificação de Imagens (repositório)
 
-Este README explica como o seu colega de infraestrutura deve importar e usar as funcionalidades do projeto diretamente via Python (sem usar a CLI).
+Este repositório contém utilitários, modelos e scripts para treino e inferência
+de classificadores de imagem usados no projeto *Pedrita*.
 
-Visão geral
-- O código principal está em `v3/`:
-  - `v3/helper.py` — utilitários e transformações auxiliares (`transform()`, `best_device()`, etc.).
-  - `v3/predict.py` — funções de predição: `predict`, `predict_and_heatmap`, `predict_batch`, `evaluate_folder`.
-    - Observação: `predict` / `predict_batch` já retornam probabilidades
-    - Também expõe `set_model()` para carregar/instanciar o modelo diretamente do módulo `predict`.
-  - `v3/train.py` — função de treino: `train_head`.
-    - Também expõe `set_model()` para carregar/instanciar o modelo antes do treino.
+## Estrutura principal
+- `v3/` — pacote principal com helpers, dataset, treino e predição.
+- `models/` — modelos serializados (`.pkl`, `.joblib`).
+- `dataset/`, `faces/`, `diffusion/`, `outputs/` — pastas de dados e saídas.
+- `pipeline.py` — exemplo de pipeline de treino/avaliação usado por desenvolvedores.
 
-Requisitos mínimos
+## Requisitos
+Recomenda-se usar um ambiente virtual Python (venv/virtualenv).
 
-Instale dependências (ajuste versões conforme seu ambiente):
-
+Exemplo rápido:
 ```bash
-python -m pip install torch torchvision timm joblib opencv-python numpy pytorch-grad-cam pillow
+python -m venv .venv
+source .venv/bin/activate
+pip install -r v3/requirements.txt
 ```
 
-Como importar e usar (exemplos)
+OBS: o `requirements.txt` dentro de `v3/` lista dependências úteis como `torch`, `timm`, `torchvision`, `joblib`, `Pillow`.
 
-1) Carregar/instanciar o modelo
-
-Agora você pode carregar o modelo diretamente a partir dos módulos `predict` ou `train` — não é necessário importar `helper` explicitamente.
+## Uso rápido
+Importe o pacote principal com:
 
 ```python
-from v3 import predict, train
-
-# Carrega (ou cria) e define o modelo global usado pelo módulo
-# use force=True para criar via timm caso o arquivo não exista
-predict.set_model('model_temp', force=True)
-# ou, alternativamente, se for treinar antes: train.set_model('model_temp', force=True)
-
-# A partir daqui, chamadas em predict.* e train.train_head funcionarão
-
+import v3 as pedrita
 ```
 
-2) Predição de uma única imagem
+O pacote `v3` reexporta funções e utilitários úteis para treino e predição, permitindo chamá-las via `pedrita.<nome>`.
+
+### Dispositivo (CPU/GPU/MPS)
+Use `best_device()` para detectar o melhor dispositivo disponível e gravá-lo internamente:
 
 ```python
-import cv2
-from v3 import predict
-
-img = cv2.imread('path/to/image.jpg')  # OpenCV retorna BGR
-fake_prob, heatmap = predict.predict_and_heatmap(img)
-
-print('Probabilidade fake:', fake_prob)
-if heatmap is not None:
-  cv2.imwrite('outputs/heatmap.jpg', heatmap)
-
+pedrita.best_device()        # detecta CUDA, MPS, DirectML ou CPU
+pedrita.best_device(True)    # força o uso de CPU
 ```
 
-Observações:
-- `predict.predict(img)` e `predict.predict_batch(...)` já retornam probabilidades (softmax). `predict.predict_and_heatmap` devolve a probabilidade de `fake` e um heatmap (BGR) quando aplicável.
+Detalhes: `best_device(cpu=True)` chama `helper.best_device(cpu=True)` e define `force_cpu=True`, fazendo com que modelos e tensores sejam movidos para `torch.device('cpu')`.
 
-3) Predição em lote
+### Carregar / definir modelo
+Use `set_model()` para carregar um modelo global usado por outras rotinas:
 
 ```python
-imgs = [cv2.imread(p) for p in ['a.jpg', 'b.jpg']]
-probs_batch = predict.predict_batch(imgs)
-# probs_batch já contém probabilidades por classe (softmax)
+# carrega um objeto serializado (joblib) ou instancia um modelo se `force=True`
+pedrita.set_model('models/ultra_7.pkl')
 
+# também aceita uma instância de torch.nn.Module diretamente
+model = MyModel(...)
+pedrita.set_model(model)
 ```
 
-4) Avaliar uma pasta de teste (programaticamente)
+Comportamento:
+- Se o argumento for `None`, `set_model()` retorna o modelo atual.
+- Se for uma instância de `torch.nn.Module`, o modelo é movido para o dispositivo detectado e colocado em `eval()`.
+- Se for um caminho para arquivo, a função tenta `joblib.load(path)`. Se o objeto carregado for um `Module`, ele é usado.
+- Se o arquivo não existir e `force=True`, o código pode criar um backbone via `timm.create_model(..., num_classes=...)` e salvar um `.pkl` auxiliar.
+
+### Datasets
+Use `pedrita.DirDataset(path, limit=...)` para criar datasets a partir de pastas com imagens organizadas por classe.
+
+Exemplo:
 
 ```python
-from v3 import predict
-
-# Estrutura esperada: test_dir/real/*  e test_dir/fake/*
-probs, gts = predict.evaluate_folder('dataset/test', batch_size=16, limit=None, thresh=0.6)
-
+ds = pedrita.DirDataset('./dataset/train', limit=3000)
 ```
 
-5) Treinamento programático
+### Treino e avaliação
+As funções de treino e predição são expostas pelo pacote. Exemplos:
 
 ```python
-from v3 import train, dset
+pedrita.best_device()
+pedrita.set_model('models/ultra_7.pkl')
+ds = pedrita.DirDataset('./dataset/train', limit=3000)
+pedrita.train(ds, epochs=3, lr=1e-4)
 
-# carrega/define o modelo via train.set_model
-train.set_model('model_temp', force=True)
-
-# Preparar lista de caminhos (ou passar uma instância de dset.Dataset)
-filepaths = []
-with open('path/to/filelist.txt','r') as fh:
-  filepaths = [l.strip() for l in fh if l.strip()]
-
-# Executa treino da cabeça/classificador
-train.train_head(filepaths=filepaths, epochs=5, batch_size=16)
-
+# avaliar uma pasta inteira (usa predict.evaluate_folder)
+acc = pedrita.evaluate_folder('./diffusion/', limit=500)
+print('ACCURACY', acc)
 ```
 
-Notas importantes
-- `train.train_head` aceita uma lista de caminhos OU uma instância de `dset.Dataset` (veja `v3/dset.py` para as classes disponíveis).
-- Você pode usar `predict.set_model()` ou `train.set_model()` para carregar/definir o modelo global; não é necessário chamar `helper.set_model()` diretamente.
-- As leituras/escritas de imagens usam OpenCV (BGR).
-- `helper.transform()` fornece o pipeline de pré-processamento compatível com o modelo carregado.
+Veja `pipeline.py` para um exemplo de uso automatizado que alterna treino/avaliação e salva modelos.
 
-**Estatísticas Atuais e Como Gerá-las**
-
-O repositório não embute números estáticos neste README para evitar divergência com execuções locais e modelos atualizados. Para gerar as estatísticas atuais (AUC, acurácia, curva ROC, etc.) execute a avaliação de teste usando a função de avaliação ou a CLI:
-
-- Via CLI (avalia toda a pasta `dataset/test` com subpastas `real/` e `fake/`):
-
-```bash
-python v3/predict.py --model <nome_modelo> --eval dataset/test
-```
-
-Isso imprimirá o tempo de execução e chamará internamente `model.compare()` para gerar métricas e plots (quando aplicável). Os vetores de probabilidade retornados pela função também são usados para calcular métricas programaticamente.
-
-- Via import (programaticamente):
+## Exemplo prático (treino + checagem)
+Trecho simplificado (baseado em `pipeline.py`):
 
 ```python
-from v3 import predict
-predict.set_model('model_temp', force=True)
-probs, gts = predict.evaluate_folder('dataset/test', batch_size=16, thresh=0.6)
-# probs: numpy array com probabilidades por amostra
-# gts: lista de rótulos ground-truth (0/1)
+import v3 as pedrita
 
-# Para calcular métricas customizadas use sklearn.metrics
-from sklearn.metrics import roc_auc_score, accuracy_score
-auc = roc_auc_score(gts, probs)
-print('AUC:', auc)
+pedrita.best_device()
+pedrita.set_model('models/ultra_7.pkl')
+
+ds = pedrita.DirDataset('./dataset/train', limit=3000)
+pedrita.train(ds, epochs=3, lr=5e-5, check=lambda: print('check called'))
+pedrita.save_model('models/ultra_8.pkl')
 ```
 
-Onde `probs` é um array de probabilidades (classe `real`) produzido por `predict_batch`.
+## Onde estão as implementações
+- `v3/helper.py` — funções centrais (`set_model`, `best_device`, transforms, utilitários de I/O).
+- `v3/predict.py` — rotinas de predição/avaliação e helpers para gerar heatmaps/visualizações.
+- `v3/train.py` — loop de treino e hooks.
+- `v3/dset.py` — definição de `DirDataset` e outros datasets.
 
-Onde procurar resultados:
-- Arquivos de saída (heatmaps, imagens anotadas) são gravados em `outputs/` pelo CLI quando aplicável.
-- Modelos treinados e calibradores ficam em `models/`.
+Links rápidos (arquivo no repo):
+- [v3/helper.py](v3/helper.py)
+- [v3/predict.py](v3/predict.py)
+- [v3/train.py](v3/train.py)
+- [v3/dset.py](v3/dset.py)
 
-Se você quiser que eu inclua números concretos (por exemplo, AUC, Accuracy, recall) nesta seção, envie as métricas obtidas localmente ou autorize-me a rodar a avaliação aqui.
+## Contribuição
+- Abra issues para bugs ou melhorias.
+- Faça PRs pequenas e focadas; adicione testes quando possível.
 
-**Uso via CLI (resumo rápido)**
-
-- Avaliar uma pasta de teste:
-
-```bash
-python v3/predict.py -m pedrita2 --eval dataset/test
-```
-
-- Predizer uma imagem e salvar heatmap (quando disponível):
-
-```bash
-python v3/predict.py -m pedrita2 -i path/to/image.jpg
-```
-
-Boas práticas para integração
-- Encapsule chamadas em wrappers da infraestrutura para lidar com logs, tratamento de exceções e paths relativos.
-- Use `helper.best_device()` para verificar o dispositivo e mover tensores/modelo quando necessário.
-
-Se quiser, eu também:
-- acrescento um exemplo de `filelist.txt` em `dataset/`;
-- crio `requirements.txt` com versões exatas usadas no ambiente.
+## Licença
+Coloque aqui a licença do projeto, se aplicável.
