@@ -114,7 +114,7 @@ Coloque aqui a licença do projeto, se aplicável.
 DATSET: https://www.kaggle.com/datasets/prithivsakthiur/deepfake-vs-real-60k  
 DATASET: https://www.kaggle.com/datasets/tristanzhang32/ai-generated-images-vs-real-images  
 DATASET: https://www.kaggle.com/datasets/xhlulu/140k-real-and-fake-faces  
-DRIVE: https://drive.google.com/drive/folders/1ywYBYQ1KoG0kaChqxis3LcpLXM4J5CHt?usp=sharing  
+DRIVE: [https://drive.google.com/drive/folders/1ywYBYQ1KoG0kaChqxis3LcpLXM4J5CHt?usp=sharing](https://drive.google.com/drive/folders/1ywYBYQ1KoG0kaChqxis3LcpLXM4J5CHt?usp=sharing)    
 APLICAÇÃO: https://app-veritas.netlify.app  
 MIRO: https://miro.com/app/board/uXjVJQuHnVQ=/?share_link_id=526481362291  
 GOOGLE SITES:https://sites.google.com/view/projetoveritas/nosso-prop%C3%B3sito    
