@@ -21,7 +21,21 @@ Avaliação — métricas e ferramentas para análise de desempenho e robustez d
 - `v3/` — pacote principal com helpers, dataset, treino e predição.  
 - `models/` — modelos serializados (`.pkl`, `.joblib`).  
 - `dataset/`, `faces/`, `diffusion/`, `outputs/` — pastas de dados e saídas.  
-- `pipeline.py` — exemplo de pipeline de treino/avaliação usado por desenvolvedores.  
+- `pipeline.py` — exemplo de pipeline de treino/avaliação usado por desenvolvedores.
+
+## Requisitos  
+
+Recomenda-se usar um ambiente virtual Python (venv/virtualenv).
+
+**Exemplo rápido:**  
+
+```bash
+python -m venv .venv
+source .venv/bin/activate
+pip install -r v3/requirements.txt
+```
+
+OBS: o `requirements.txt` dentro de `v3/` lista dependências úteis como `torch`, `timm`, `torchvision`, `joblib`, `Pillow`.
 
 ## Instruções detalhadas para compilar e executar.  
 
