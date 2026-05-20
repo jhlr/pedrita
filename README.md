@@ -17,3 +17,4 @@ de classificadores de imagem usados no projeto *Veritas*.
  https://www.kaggle.com/datasets/xhlulu/140k-real-and-fake-faces  
  https://drive.google.com/drive/folders/1ywYBYQ1KoG0kaChqxis3LcpLXM4J5CHt?usp=sharing  
  https://app-veritas.netlify.app  
+ https://miro.com/app/board/uXjVJQuHnVQ=/?share_link_id=526481362291
