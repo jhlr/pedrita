@@ -118,5 +118,5 @@ DRIVE: https://drive.google.com/drive/folders/1ywYBYQ1KoG0kaChqxis3LcpLXM4J5CHt?
 APLICAÇÃO: https://app-veritas.netlify.app  
 MIRO: https://miro.com/app/board/uXjVJQuHnVQ=/?share_link_id=526481362291  
 GOOGLE SITES:  
-FIGMA ATUALIZADO:   
+FIGMA ATUALIZADO:https://www.figma.com/design/DffaA6K2I4fEAXVPLmYwG0/Sem-t%C3%ADtulo?node-id=0-1&t=6W5Z6Trawm0E4F0M-1     
 LOVABLE:
