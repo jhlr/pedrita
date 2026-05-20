@@ -1,5 +1,6 @@
 # Veritas — Classificação de Imagens autênticas ou manipuladas (repositório)
 
+## Informações Gerais  
 Este repositório contém utilitários, modelos e scripts para treino e inferência
 de classificadores de imagem usados no projeto *Veritas*.
 
