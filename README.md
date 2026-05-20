@@ -111,7 +111,7 @@ python v3 video models/ultra_7.pkl -v caminho/para/video.mp4 -n 30
 Coloque aqui a licença do projeto, se aplicável.  
 
 ## Links importantes para o projeto.  
-DATSET: https://www.kaggle.com/datasets/prithivsakthiur/deepfake-vs-real-60k  
+DATASET: https://www.kaggle.com/datasets/prithivsakthiur/deepfake-vs-real-60k  
 DATASET: https://www.kaggle.com/datasets/tristanzhang32/ai-generated-images-vs-real-images  
 DATASET: https://www.kaggle.com/datasets/xhlulu/140k-real-and-fake-faces  
 DRIVE: [https://drive.google.com/drive/folders/1ywYBYQ1KoG0kaChqxis3LcpLXM4J5CHt?usp=sharing](https://drive.google.com/drive/folders/1ywYBYQ1KoG0kaChqxis3LcpLXM4J5CHt?usp=sharing)    
