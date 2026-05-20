@@ -4,14 +4,15 @@
 Este repositório contém utilitários, modelos e scripts para treino e inferência
 de classificadores de imagem usados no projeto *Veritas*.
 
-**Grupo:   
+**Grupo:**  
+
   Ivan Edward @ iers-bd   
   Elizabete Barbosa @ elizabetealbuquerque   
-  Joao Rietra @ jhlr**    
+  Joao Rietra @ jhlr  
   
-**Nome da disciplina: Machine Learning I - School Innovation.**  
-**Nome da instituição de ensino: CESAR School.**  
-**Nome da solução desenvolvida: Veritas**  
+**Nome da disciplina:** Machine Learning I - School Innovation. 
+**Nome da instituição de ensino:** CESAR School.
+**Nome da solução desenvolvida:** Veritas  
 
 ## Breve descrição da solução  
 Veritas (referenciada como Pedrita no repositório) é um projeto baseado em visão computacional voltada para a detecção de imagens manipuladas ou geradas por IA, centralizando utilitários, modelos e pipelines para treino e inferência de classificadores.
