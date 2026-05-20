@@ -4,7 +4,7 @@
 Este repositório contém utilitários, modelos e scripts para treino e inferência
 de classificadores de imagem usados no projeto *Veritas*.
 
-**Grupo: 
+**Grupo:   
   Ivan Edward @ iers-bd   
   Elizabete Barbosa @ elizabetealbuquerque   
   Joao Rietra @ jhlr ;**    
