@@ -118,3 +118,4 @@ APLICAÇÃO: https://app-veritas.netlify.app
 MIRO: https://miro.com/app/board/uXjVJQuHnVQ=/?share_link_id=526481362291  
 GOOGLE SITES:  
 FIGMA ATUALIZADO:   
+LOVABLE:
