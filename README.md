@@ -259,6 +259,7 @@ O Desafio do Contexto (Imagens Reais em Narrativas Falsas): Um achado comportame
 ## Próximos passos
 **Modelagem:**  
 Serão explorados ajustes nos parâmetros de OHEM (ohkeep e ohalpha) para aumentar o peso dos exemplos mais difíceis, e a função merge() de train.py será investigada como alternativa para combinar modelos treinados em subconjuntos distintos do dataset.  
+
 **Validação:**  
 A validação será aprofundada com foco na redução da zona de dúvida de 1,8% e na investigação da coincidência entre a taxa de erro do modelo (1,6%) e o ruído de rotulagem do dataset (1,6%). O impacto da degradação por compressão consecutiva sobre as predições também será analisado.  
 
