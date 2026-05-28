@@ -119,7 +119,8 @@ python v3 video models/ultra_7.pkl -v caminho/para/video.mp4 -n 30
 
 ## Inspeção dos Dados  
 
-**Como os dados foram carregados e organização inicial:**    
+**Como os dados foram carregados e organização inicial:** 
+
 **Abordagem de Carregamento:** Diferente de tabelas convencionais (geralmente carregadas via pandas), os dados deste projeto consistem em imagens médicas estruturadas em diretórios. Desenvolvemos uma classe customizada chamada DirDataset (herdada de torch.utils.data.Dataset) localizada no módulo dset.py.  
 
 **Mecanismo de Varredura:** O carregamento varre recursivamente e mapeia os caminhos dos arquivos utilizando a biblioteca padrão glob e pathlib. A classe procura por subpastas específicas chamadas real e fake dentro do diretório informado. Arquivos com as extensões .jpg, .png e .jpeg são filtrados, convertidos para letras minúsculas (.lower()) para evitar incompatibilidades de sistema, e indexados.  
