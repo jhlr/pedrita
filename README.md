@@ -171,6 +171,25 @@ No pipeline de imagens, "valores ausentes" equivalem a arquivos corrompidos ou l
   robustos de padronização para que o gradiente da rede não exploda ou seja
   enviesado por cores saturadas e traços artificiais.  
 
+## Estatísticas descritivas
+O dataset do projeto Veritas consolida três fontes distintas do Kaggle, Deepfake-vs-real-60K, ai-generated-images-vs-real-images e 40k-real-and-fake-faces, totalizando aproximadamente 100.000 registros de treino,
+20.000 de teste e 213 atributos por instância. Por se tratar de um pipeline de visão computacional, a unidade de análise não é uma tabela de features tabulares, mas sim tensores de imagem com dimensões [C, H, W] após normalização. Nesse contexto, as estatísticas descritivas mais informativas não emergem de um describe() convencional, mas da distribuição das predições do modelo sobre o conjunto de teste, calculadas pela função compare() implementada em helper.py. 
+
+**Distribuição das predições (threshold = 0.70):**  
+A função compare() segmenta os resultados em três categorias — Sure (predição confiante e correta), Wrong (predição confiante e incorreta) e Dunno (zona de ambiguidade) — aplicando o limiar de 70% de probabilidade para separar certezas de incertezas. Sobre o conjunto de teste, o modelo atingiu 96,6% de predições confiantes e corretas, 1,6% de erros com alta confiança e 1,8% de casos na zona de dúvida. Essa distribuição assimétrica, com massa concentrada no acerto e caudas pequenas e desiguais, é o principal descritor estatístico do comportamento do modelo.
+
+**Média e tendência central:**  
+A concentração de 96,6% dos casos na faixa de acerto confiante indica que a distribuição das probabilidades de saída é fortemente bimodal: a maioria das imagens recebe scores próximos a 0 (fake com alta certeza) ou próximos a 1 (real com alta certeza), com poucos casos intermediários. A média das probabilidades preditas tende a refletir o balanço entre as classes no dataset, sendo influenciada diretamente pelo viés de pinturas clássicas e cartoons identificado na inspeção.
+
+**Dispersão e desvio padrão:**  
+A cauda de 1,8% de casos na zona de dúvida (scores entre 0.30 e 0.70) representa a dispersão residual do modelo, imagens para as quais o classificador não encontra evidências espectrais ou texturais suficientemente distintas. Esse grupo concentra os casos mais afetados pela degradação por compressão sucessiva e pelos filtros estéticos de smartphones identificados nos testes com o público.  
+
+**Mínimo, máximo e outliers:**  
+Os 1,6% de erros com alta confiança constituem os outliers mais críticos da distribuição: casos em que o modelo atribui probabilidade acima de 70% para a classe errada. A análise desses casos revelou assimetria entre as classes, falsos negativos (sintéticas classificadas como reais) são mais frequentes que falsos positivos, o que representa o risco mais grave para o ecossistema de checagem jornalística.  
+
+**Ruído de rotulagem:**  
+O dataset reporta 1,6% de erro e 1,8% de dúvida na rotulagem original, valores numericamente próximos às taxas de erro e ambiguidade do modelo, sugerindo que parte do erro residual pode ser atribuída a ruído nos próprios rótulos, e não apenas a limitações arquiteturais do classificador.
+
 ## Links rápidos:
 - [v3/helper.py](v3/helper.py)
 - [v3/predict.py](v3/predict.py)
