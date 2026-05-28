@@ -117,6 +117,58 @@ python v3 video models/ultra_7.pkl -v caminho/para/video.mp4 -n 30
 - `v3/train.py` — loop de treino e hooks.
 - `v3/dset.py` — definição de `DirDataset` e outros datasets.
 
+## Inspeção dos Dados  
+
+**Como os dados foram carregados e organização inicial:**    
+**Abordagem de Carregamento:** Diferente de tabelas convencionais (geralmente carregadas via pandas), os dados deste projeto consistem em imagens médicas estruturadas em diretórios. Desenvolvemos uma classe customizada chamada DirDataset (herdada de torch.utils.data.Dataset) localizada no módulo dset.py.  
+
+**Mecanismo de Varredura:** O carregamento varre recursivamente e mapeia os caminhos dos arquivos utilizando a biblioteca padrão glob e pathlib. A classe procura por subpastas específicas chamadas real e fake dentro do diretório informado. Arquivos com as extensões .jpg, .png e .jpeg são filtrados, convertidos para letras minúsculas (.lower()) para evitar incompatibilidades de sistema, e indexados.  
+
+**Bibliotecas Utilizadas:** * pathlib e glob para manipulação de caminhos e busca de arquivos no disco.
+
+    ● PIL (Pillow) para a abertura e manipulação bruta das imagens.  
+    ● torch e torch.utils.data para encapsular a lógica de indexação e preparação para os minibatches da rede neural.  
+    ● random para o embaralhamento (shuffle) controlado dos caminhos.  
+
+**Apresentação e Estrutura da Base:**  
+
+**Primeiras linhas / Registros do Dataset:**  
+No contexto de visão computacional, "as primeiras linhas" correspondem à lista interna de tuplas self.samples, onde cada registro armazena (caminho_da_imagem, classe_alvo). A classe-alvo é codificada
+numericamente em binário: 0 para imagens classificadas como fake (p. ex., exames sintéticos ou alterados) e 1 para imagens real (exames autênticos).
+
+**Tipos das variáveis:**  
+* Variável Independente (X): Caminho do arquivo (String/Path) que é transformado em um torch.Tensor de ponto flutuante com dimensões [C, H, W] (Canais, Altura, Largura) após o tratamento.
+
+    ● Variável Dependente (Y / Label): Inteiro (int), representando a classe
+    (0 ou 1).
+
+**Dimensão da base:**  
+Retornada dinamicamente pelo método __len__, variando conforme o diretório apontado (datasetou cancer). O script __main__.py aceita um argumento --limit (-l) que permite truncar e fixar a dimensão máxima do dataset para
+testes rápidos de validação de pipeline.
+
+**Identificação de valores ausentes e registros duplicados:**  
+No pipeline de imagens, "valores ausentes" equivalem a arquivos corrompidos ou links quebrados no disco. A verificação de integridade física é feita em tempo de execução ao tentar abrir a imagem via PIL.Image.open(). Imagens duplicadas (mesmo arquivo copiado com nomes diferentes) são tratadas por meio da operação de soma e embaralhamento de datasets no método __add__ utilizando a lógica de ordenação e eliminação por conjuntos (set) temporal se necessário.  
+
+**Particularidades Críticas Encontradas na Inspeção Visual:**  
+
+  ● Viés na classe "Real": Foi detectada uma alta incidência de imagens de pinturas
+  clássicas e artísticas misturadas à porção real do dataset. Do ponto de vista
+  conceitual do modelo de deep learning, isso representa um ruído ou viés que força a
+  rede a aprender texturas e pinceladas como "padrão real", o que pode prejudicar a
+  especificidade médica.  
+  
+  ● Desafio na classe "Fake": O dataset de fakes possui imagens de altíssimo realismo
+  (geradas por algoritmos generativos avançados ou manipulações imperceptíveis a
+  olho nu). Isso eleva drasticamente a complexidade do problema, exigindo que o
+  modelo aprenda artefatos microscópicos de frequência ou compressão, em vez de
+  focar apenas em deformidades macroscópicas.  
+  
+  ● Presença de Cartoons Editados: Identificou-se uma parcela de cartoons
+  modificados digitalmente. Esse tipo de dado atua como um forte outlier em relação à
+  textura esperada de exames médicos legítimos, necessitando de tratamentos
+  robustos de padronização para que o gradiente da rede não exploda ou seja
+  enviesado por cores saturadas e traços artificiais.  
+
 ## Links rápidos:
 - [v3/helper.py](v3/helper.py)
 - [v3/predict.py](v3/predict.py)
