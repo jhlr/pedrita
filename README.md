@@ -190,6 +190,36 @@ Os 1,6% de erros com alta confiança constituem os outliers mais críticos da di
 **Ruído de rotulagem:**  
 O dataset reporta 1,6% de erro e 1,8% de dúvida na rotulagem original, valores numericamente próximos às taxas de erro e ambiguidade do modelo, sugerindo que parte do erro residual pode ser atribuída a ruído nos próprios rótulos, e não apenas a limitações arquiteturais do classificador.
 
+## Tratamento dos Dados  
+
+**Tratamentos Aplicados e Justificativas:**  
+**Remoção de Colunas Irrelevantes (Padronização de Canais e Formatos de Cor):**  
+Imagens possuem variações de modo de cor (como escalas de cinza L, paletas indexed P com transparência tRNS ou imagens em RGBA). No helper do projeto (helper.py:to_pil), aplicamos um tratamento rigoroso: imagens com canal Alpha (RGBA/LA) ou paletas transparentes são sobrepostas (composição alpha) contra um fundo branco artificial e convertidas estritamente para RGB. Isso remove metadados e canais irrelevantes que quebrariam a arquitetura da rede convolucional (que espera exatamente 3 canais de entrada).  
+
+**Normalização e Redimensionamento:**
+Todas as imagens são redimensionadas dinamicamente (Resize) para as dimensões nativas esperadas pelo backbone do modelo (obtidas diretamente da configuração do modelo, por exemplo, 224x224). Em seguida, os pixels (originalmente de 0 a 255) são transformados em tensores entre 0.0 e 1.0 e normalizados (Normalize) utilizando a média e o desvio padrão do ImageNet (mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]). Isso garante estabilidade numérica no cálculo dos gradientes e acelera a convergência do otimizador AdamW.  
+
+**Balanceamento Inicial:**  
+Controlado no construtor do DirDataset, que extrai de forma independente a lista de imagens legítimas e manipuladas, permitindo a aplicação do parâmetro limit uniformemente em ambas as categorias para evitar o viés de prevalência de classe durante o treinamento.  
+
+**Data Augmentation (Aumento de Dados no Treinamento):**  
+Para mitigar os problemas encontrados na inspeção (como o altíssimo realismo dos fakes e o viés trazido pelas pinturas/cartoons), foi implementada uma estratégia cirúrgica de Data Augmentation aplicada exclusivamente durante a fase de treino (train=True no método transform de helper.py):  
+● GaussianBlur(kernel_size=3, sigma=(0.1, 2.0)),
+● RandomRotation(degrees=15),
+● RandomHorizontalFlip(p=0.5),
+● RandomVerticalFlip(p=0.5),
+● ColorJitter(brightness=0.5, contrast=0.5, saturation=0.5, hue=0.2 )
+
+**Justificativa técnica das técnicas de Augmentation adotadas:**  
+
+1. GaussianBlur (Desfoque Gaussiano): Força o modelo a desconsiderar ruídos de alta frequência muito específicos e focar em estruturas morfológicas mais amplas. Isso é essencial para combater as imagens de "altíssimo
+realismo", impedindo que a rede decore assinaturas digitais ou padrões de compressão de softwares geradores específicos.  
+2. RandomRotation (Rotação de até 15°): Simula variações reais de posicionamento de sensores de captura ou inclinações biológicas nos exames. Garante invariância rotacional à rede.  
+3. RandomHorizontalFlip e RandomVerticalFlip (Espelhamentos de 50%): Duplicam a diversidade espacial do dataset sem alterar a semântica da patologia. Um exame espelhado continua sendo real ou fake, mas obriga a
+rede a aprender propriedades geométricas que não dependam da orientação esquerda/direita ou topo/fundo.  
+4. ColorJitter (Perturbação de Brilho, Contraste, Saturação e Matiz): Esta é a defesa direta contra a presença indesejada de cartoons e pinturas. Ao variar agressivamente as propriedades de iluminação e cor em tempo de
+execução, o modelo deixa de confiar em cores saturadas (comuns nos cartoons) ou tons específicos de iluminação (comuns em quadros a óleo) para ditar sua predição, focando puramente no conteúdo estrutural das imagens e aumentando a robustez para o domínio médico real.
+
 ## Links rápidos:
 - [v3/helper.py](v3/helper.py)
 - [v3/predict.py](v3/predict.py)
