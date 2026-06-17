@@ -1,0 +1,748 @@
+{
+  "note": "benchmarks: 50 imgs/classe por dataset (dataset/faces/ciplab), threshold 0.5, seed 42. Medicos sao off-domain (~50%).",
+  "ensemble_default": [
+    "mother",
+    "ultra_1",
+    "ultra_6",
+    "ultra_8",
+    "pedrita7"
+  ],
+  "count": 54,
+  "models": {
+    "breast_0": {
+      "file": "models/breast_0.pkl",
+      "size_mb": 16.4,
+      "md5": "ed00c04e",
+      "family": "medical",
+      "in_ensemble": false,
+      "class": "EfficientNet",
+      "num_classes": 2,
+      "arch": "efficientnet_b0"
+    },
+    "breast_1": {
+      "file": "models/breast_1.pkl",
+      "size_mb": 16.4,
+      "md5": "771fa83d",
+      "family": "medical",
+      "in_ensemble": false,
+      "class": "EfficientNet",
+      "num_classes": 2,
+      "arch": "efficientnet_b0"
+    },
+    "breast_2": {
+      "file": "models/breast_2.pkl",
+      "size_mb": 16.4,
+      "md5": "dd193451",
+      "family": "medical",
+      "in_ensemble": false,
+      "class": "EfficientNet",
+      "num_classes": 2,
+      "arch": "efficientnet_b0"
+    },
+    "cancer_0": {
+      "file": "models/cancer_0.pkl",
+      "size_mb": 16.4,
+      "md5": "3e626401",
+      "family": "medical",
+      "in_ensemble": false,
+      "class": "EfficientNet",
+      "num_classes": 2,
+      "arch": "efficientnet_b0"
+    },
+    "cancer_1": {
+      "file": "models/cancer_1.pkl",
+      "size_mb": 16.4,
+      "md5": "1ba549c7",
+      "family": "medical",
+      "in_ensemble": false,
+      "class": "EfficientNet",
+      "num_classes": 2,
+      "arch": "efficientnet_b0"
+    },
+    "cancer_2": {
+      "file": "models/cancer_2.pkl",
+      "size_mb": 16.4,
+      "md5": "a3813c7a",
+      "family": "medical",
+      "in_ensemble": false,
+      "class": "EfficientNet",
+      "num_classes": 2,
+      "arch": "efficientnet_b0"
+    },
+    "cancer_4": {
+      "file": "models/cancer_4.pkl",
+      "size_mb": 16.4,
+      "md5": "5a6059ba",
+      "family": "medical",
+      "in_ensemble": false,
+      "class": "EfficientNet",
+      "num_classes": 2,
+      "arch": "efficientnet_b0"
+    },
+    "cancer_5": {
+      "file": "models/cancer_5.pkl",
+      "size_mb": 16.4,
+      "md5": "d1d7d01f",
+      "family": "medical",
+      "in_ensemble": false,
+      "class": "EfficientNet",
+      "num_classes": 2,
+      "arch": "efficientnet_b0"
+    },
+    "ciplab_0": {
+      "file": "models/ciplab_0.pkl",
+      "size_mb": 16.4,
+      "md5": "0a340542",
+      "family": "manipulation",
+      "in_ensemble": false,
+      "class": "EfficientNet",
+      "num_classes": 2,
+      "arch": "efficientnet_b0",
+      "benchmarks": {
+        "dataset_acc": 0.9,
+        "faces_acc": 0.92,
+        "ciplab_acc": 0.57
+      }
+    },
+    "ciplab_1": {
+      "file": "models/ciplab_1.pkl",
+      "size_mb": 16.4,
+      "md5": "e2f605f6",
+      "family": "manipulation",
+      "in_ensemble": false,
+      "class": "EfficientNet",
+      "num_classes": 2,
+      "arch": "efficientnet_b0",
+      "benchmarks": {
+        "dataset_acc": 0.88,
+        "faces_acc": 0.91,
+        "ciplab_acc": 0.52
+      }
+    },
+    "ciplab_2": {
+      "file": "models/ciplab_2.pkl",
+      "size_mb": 16.4,
+      "md5": "8ae34054",
+      "family": "manipulation",
+      "in_ensemble": false,
+      "class": "EfficientNet",
+      "num_classes": 2,
+      "arch": "efficientnet_b0",
+      "benchmarks": {
+        "dataset_acc": 0.87,
+        "faces_acc": 0.91,
+        "ciplab_acc": 0.54
+      }
+    },
+    "efficientnet_b0_c1": {
+      "file": "models/efficientnet_b0_c1.pkl",
+      "size_mb": 16.4,
+      "md5": "c9237eda",
+      "family": "base",
+      "in_ensemble": false,
+      "class": "EfficientNet",
+      "num_classes": 1,
+      "arch": "efficientnet_b0",
+      "benchmarks": {
+        "dataset_acc": 0.51,
+        "faces_acc": 0.52,
+        "ciplab_acc": 0.57
+      }
+    },
+    "efficientnet_b0_c2": {
+      "file": "models/efficientnet_b0_c2.pkl",
+      "size_mb": 16.4,
+      "md5": "e80e341c",
+      "family": "base",
+      "in_ensemble": false,
+      "class": "EfficientNet",
+      "num_classes": 2,
+      "arch": "efficientnet_b0",
+      "benchmarks": {
+        "dataset_acc": 0.48,
+        "faces_acc": 0.45,
+        "ciplab_acc": 0.53
+      }
+    },
+    "efficientnet_b0_c3": {
+      "file": "models/efficientnet_b0_c3.pkl",
+      "size_mb": 16.4,
+      "md5": "63783267",
+      "family": "base",
+      "in_ensemble": false,
+      "class": "EfficientNet",
+      "num_classes": 3,
+      "arch": "efficientnet_b0",
+      "benchmarks": {
+        "dataset_acc": 0.41,
+        "faces_acc": 0.47,
+        "ciplab_acc": 0.57
+      }
+    },
+    "efficientnet_my": {
+      "file": "models/efficientnet_my.pkl",
+      "size_mb": 16.4,
+      "md5": "d30b07b4",
+      "family": "base",
+      "in_ensemble": false,
+      "class": "EfficientNet",
+      "num_classes": 2,
+      "arch": "efficientnet_b0",
+      "benchmarks": {
+        "dataset_acc": 0.39,
+        "faces_acc": 0.53,
+        "ciplab_acc": 0.58
+      }
+    },
+    "faces1": {
+      "file": "models/faces1.pkl",
+      "size_mb": 16.4,
+      "md5": "c32c6dcc",
+      "family": "manipulation",
+      "in_ensemble": false,
+      "class": "EfficientNet",
+      "num_classes": 1,
+      "arch": "efficientnet_b0",
+      "benchmarks": {
+        "dataset_acc": 0.37,
+        "faces_acc": 0.83,
+        "ciplab_acc": 0.49
+      }
+    },
+    "faces2": {
+      "file": "models/faces2.pkl",
+      "size_mb": 16.4,
+      "md5": "995bbcb8",
+      "family": "manipulation",
+      "in_ensemble": false,
+      "class": "EfficientNet",
+      "num_classes": 1,
+      "arch": "efficientnet_b0",
+      "benchmarks": {
+        "dataset_acc": 0.31,
+        "faces_acc": 0.91,
+        "ciplab_acc": 0.49
+      }
+    },
+    "faces3": {
+      "file": "models/faces3.pkl",
+      "size_mb": 16.4,
+      "md5": "8706b290",
+      "family": "manipulation",
+      "in_ensemble": false,
+      "class": "EfficientNet",
+      "num_classes": 1,
+      "arch": "efficientnet_b0",
+      "benchmarks": {
+        "dataset_acc": 0.44,
+        "faces_acc": 0.85,
+        "ciplab_acc": 0.52
+      }
+    },
+    "faces4": {
+      "file": "models/faces4.pkl",
+      "size_mb": 16.4,
+      "md5": "db3a5d11",
+      "family": "manipulation",
+      "in_ensemble": false,
+      "class": "EfficientNet",
+      "num_classes": 2,
+      "arch": "efficientnet_b0",
+      "benchmarks": {
+        "dataset_acc": 0.45,
+        "faces_acc": 0.86,
+        "ciplab_acc": 0.5
+      }
+    },
+    "faces5": {
+      "file": "models/faces5.pkl",
+      "size_mb": 16.4,
+      "md5": "53f95188",
+      "family": "manipulation",
+      "in_ensemble": false,
+      "class": "EfficientNet",
+      "num_classes": 2,
+      "arch": "efficientnet_b0",
+      "benchmarks": {
+        "dataset_acc": 0.45,
+        "faces_acc": 0.86,
+        "ciplab_acc": 0.46
+      }
+    },
+    "faces_c3": {
+      "file": "models/faces_c3.pkl",
+      "size_mb": 16.4,
+      "md5": "db8e0595",
+      "family": "manipulation",
+      "in_ensemble": false,
+      "class": "EfficientNet",
+      "num_classes": 3,
+      "arch": "efficientnet_b0",
+      "benchmarks": {
+        "dataset_acc": 0.49,
+        "faces_acc": 0.88,
+        "ciplab_acc": 0.52
+      }
+    },
+    "merged": {
+      "file": "models/merged.pkl",
+      "size_mb": 16.4,
+      "md5": "5186c696",
+      "family": "manipulation",
+      "in_ensemble": false,
+      "class": "EfficientNet",
+      "num_classes": 2,
+      "arch": "efficientnet_b0",
+      "benchmarks": {
+        "dataset_acc": 0.91,
+        "faces_acc": 0.95,
+        "ciplab_acc": 0.52
+      }
+    },
+    "mother": {
+      "file": "models/mother.pkl",
+      "size_mb": 16.4,
+      "md5": "a1845277",
+      "family": "manipulation",
+      "in_ensemble": true,
+      "class": "EfficientNet",
+      "num_classes": 2,
+      "arch": "efficientnet_b0",
+      "benchmarks": {
+        "dataset_acc": 0.89,
+        "faces_acc": 0.99,
+        "ciplab_acc": 0.52
+      }
+    },
+    "oral_0": {
+      "file": "models/oral_0.pkl",
+      "size_mb": 16.4,
+      "md5": "a13eabad",
+      "family": "medical",
+      "in_ensemble": false,
+      "class": "EfficientNet",
+      "num_classes": 2,
+      "arch": "efficientnet_b0"
+    },
+    "oral_1": {
+      "file": "models/oral_1.pkl",
+      "size_mb": 16.4,
+      "md5": "84d307a9",
+      "family": "medical",
+      "in_ensemble": false,
+      "class": "EfficientNet",
+      "num_classes": 2,
+      "arch": "efficientnet_b0"
+    },
+    "oral_2": {
+      "file": "models/oral_2.pkl",
+      "size_mb": 16.4,
+      "md5": "ee50a126",
+      "family": "medical",
+      "in_ensemble": false,
+      "class": "EfficientNet",
+      "num_classes": 2,
+      "arch": "efficientnet_b0"
+    },
+    "pedrita": {
+      "file": "models/pedrita.pkl",
+      "size_mb": 16.4,
+      "md5": "cc157f43",
+      "family": "manipulation",
+      "in_ensemble": false,
+      "class": "EfficientNet",
+      "num_classes": 2,
+      "arch": "efficientnet_b0",
+      "benchmarks": {
+        "dataset_acc": 0.86,
+        "faces_acc": 0.49,
+        "ciplab_acc": 0.49
+      }
+    },
+    "pedrita1": {
+      "file": "models/pedrita1.pkl",
+      "size_mb": 16.4,
+      "md5": "b31961df",
+      "family": "manipulation",
+      "in_ensemble": false,
+      "class": "EfficientNet",
+      "num_classes": 2,
+      "arch": "efficientnet_b0",
+      "benchmarks": {
+        "dataset_acc": 0.94,
+        "faces_acc": 0.86,
+        "ciplab_acc": 0.5
+      }
+    },
+    "pedrita10": {
+      "file": "models/pedrita10.pkl",
+      "size_mb": 16.4,
+      "md5": "20e2da45",
+      "family": "manipulation",
+      "in_ensemble": false,
+      "class": "EfficientNet",
+      "num_classes": 2,
+      "arch": "efficientnet_b0",
+      "benchmarks": {
+        "dataset_acc": 0.77,
+        "faces_acc": 0.69,
+        "ciplab_acc": 0.53
+      }
+    },
+    "pedrita11": {
+      "file": "models/pedrita11.pkl",
+      "size_mb": 16.4,
+      "md5": "e75e1cac",
+      "family": "manipulation",
+      "in_ensemble": false,
+      "class": "EfficientNet",
+      "num_classes": 2,
+      "arch": "efficientnet_b0",
+      "benchmarks": {
+        "dataset_acc": 0.91,
+        "faces_acc": 0.78,
+        "ciplab_acc": 0.48
+      }
+    },
+    "pedrita12": {
+      "file": "models/pedrita12.pkl",
+      "size_mb": 16.4,
+      "md5": "95f22726",
+      "family": "manipulation",
+      "in_ensemble": false,
+      "class": "EfficientNet",
+      "num_classes": 2,
+      "arch": "efficientnet_b0",
+      "benchmarks": {
+        "dataset_acc": 0.87,
+        "faces_acc": 0.69,
+        "ciplab_acc": 0.55
+      }
+    },
+    "pedrita13": {
+      "file": "models/pedrita13.pkl",
+      "size_mb": 16.4,
+      "md5": "60734a16",
+      "family": "manipulation",
+      "in_ensemble": false,
+      "class": "EfficientNet",
+      "num_classes": 2,
+      "arch": "efficientnet_b0",
+      "benchmarks": {
+        "dataset_acc": 0.44,
+        "faces_acc": 0.93,
+        "ciplab_acc": 0.48
+      }
+    },
+    "pedrita2": {
+      "file": "models/pedrita2.pkl",
+      "size_mb": 16.4,
+      "md5": "9aaa020b",
+      "family": "manipulation",
+      "in_ensemble": false,
+      "class": "EfficientNet",
+      "num_classes": 2,
+      "arch": "efficientnet_b0",
+      "benchmarks": {
+        "dataset_acc": 0.92,
+        "faces_acc": 0.53,
+        "ciplab_acc": 0.52
+      }
+    },
+    "pedrita3": {
+      "file": "models/pedrita3.pkl",
+      "size_mb": 16.4,
+      "md5": "5f1ab34d",
+      "family": "manipulation",
+      "in_ensemble": false,
+      "class": "EfficientNet",
+      "num_classes": 2,
+      "arch": "efficientnet_b0",
+      "benchmarks": {
+        "dataset_acc": 0.48,
+        "faces_acc": 0.5,
+        "ciplab_acc": 0.5
+      }
+    },
+    "pedrita4": {
+      "file": "models/pedrita4.pkl",
+      "size_mb": 16.4,
+      "md5": "ef069082",
+      "family": "manipulation",
+      "in_ensemble": false,
+      "class": "EfficientNet",
+      "num_classes": 2,
+      "arch": "efficientnet_b0",
+      "benchmarks": {
+        "dataset_acc": 0.57,
+        "faces_acc": 0.51,
+        "ciplab_acc": 0.54
+      }
+    },
+    "pedrita5": {
+      "file": "models/pedrita5.pkl",
+      "size_mb": 16.4,
+      "md5": "a43118a3",
+      "family": "manipulation",
+      "in_ensemble": false,
+      "class": "EfficientNet",
+      "num_classes": 2,
+      "arch": "efficientnet_b0",
+      "benchmarks": {
+        "dataset_acc": 0.9,
+        "faces_acc": 0.85,
+        "ciplab_acc": 0.46
+      }
+    },
+    "pedrita6": {
+      "file": "models/pedrita6.pkl",
+      "size_mb": 16.4,
+      "md5": "864d1086",
+      "family": "manipulation",
+      "in_ensemble": false,
+      "class": "EfficientNet",
+      "num_classes": 2,
+      "arch": "efficientnet_b0",
+      "benchmarks": {
+        "dataset_acc": 0.96,
+        "faces_acc": 0.91,
+        "ciplab_acc": 0.5
+      }
+    },
+    "pedrita7": {
+      "file": "models/pedrita7.pkl",
+      "size_mb": 16.4,
+      "md5": "50df3c7b",
+      "family": "manipulation",
+      "in_ensemble": true,
+      "class": "EfficientNet",
+      "num_classes": 3,
+      "arch": "efficientnet_b0",
+      "benchmarks": {
+        "dataset_acc": 0.91,
+        "faces_acc": 0.89,
+        "ciplab_acc": 0.46
+      }
+    },
+    "pedrita8": {
+      "file": "models/pedrita8.pkl",
+      "size_mb": 16.4,
+      "md5": "a23474f6",
+      "family": "manipulation",
+      "in_ensemble": false,
+      "class": "EfficientNet",
+      "num_classes": 2,
+      "arch": "efficientnet_b0",
+      "benchmarks": {
+        "dataset_acc": 0.89,
+        "faces_acc": 0.84,
+        "ciplab_acc": 0.52
+      }
+    },
+    "pedrita9": {
+      "file": "models/pedrita9.pkl",
+      "size_mb": 16.4,
+      "md5": "dc1cf2a8",
+      "family": "manipulation",
+      "in_ensemble": false,
+      "class": "EfficientNet",
+      "num_classes": 2,
+      "arch": "efficientnet_b0",
+      "benchmarks": {
+        "dataset_acc": 0.75,
+        "faces_acc": 0.62,
+        "ciplab_acc": 0.43
+      }
+    },
+    "pedritac2l": {
+      "file": "models/pedritac2l.pkl",
+      "size_mb": 16.4,
+      "md5": "f700e4e3",
+      "family": "manipulation",
+      "in_ensemble": false,
+      "class": "EfficientNet",
+      "num_classes": 2,
+      "arch": "efficientnet_b0",
+      "benchmarks": {
+        "dataset_acc": 0.88,
+        "faces_acc": 0.9,
+        "ciplab_acc": 0.51
+      }
+    },
+    "pedritacl": {
+      "file": "models/pedritacl.pkl",
+      "size_mb": 16.4,
+      "md5": "6931e1b5",
+      "family": "manipulation",
+      "in_ensemble": false,
+      "class": "EfficientNet",
+      "num_classes": 1,
+      "arch": "efficientnet_b0",
+      "benchmarks": {
+        "dataset_acc": 0.87,
+        "faces_acc": 0.7,
+        "ciplab_acc": 0.47
+      }
+    },
+    "pedritanet": {
+      "file": "models/pedritanet.pkl",
+      "size_mb": 16.4,
+      "md5": "8e9dde8b",
+      "family": "manipulation",
+      "in_ensemble": false,
+      "class": "EfficientNet",
+      "num_classes": 2,
+      "arch": "efficientnet_b0",
+      "benchmarks": {
+        "dataset_acc": 0.83,
+        "faces_acc": 0.53,
+        "ciplab_acc": 0.43
+      }
+    },
+    "ultra_1": {
+      "file": "models/ultra_1.pkl",
+      "size_mb": 16.4,
+      "md5": "f77f4e0b",
+      "family": "manipulation",
+      "in_ensemble": true,
+      "class": "EfficientNet",
+      "num_classes": 2,
+      "arch": "efficientnet_b0",
+      "benchmarks": {
+        "dataset_acc": 0.9,
+        "faces_acc": 0.98,
+        "ciplab_acc": 0.52
+      }
+    },
+    "ultra_2": {
+      "file": "models/ultra_2.pkl",
+      "size_mb": 16.4,
+      "md5": "dd8811b8",
+      "family": "manipulation",
+      "in_ensemble": false,
+      "class": "EfficientNet",
+      "num_classes": 2,
+      "arch": "efficientnet_b0",
+      "benchmarks": {
+        "dataset_acc": 0.84,
+        "faces_acc": 0.9,
+        "ciplab_acc": 0.54
+      }
+    },
+    "ultra_3": {
+      "file": "models/ultra_3.pkl",
+      "size_mb": 16.4,
+      "md5": "b65c91fe",
+      "family": "manipulation",
+      "in_ensemble": false,
+      "class": "EfficientNet",
+      "num_classes": 2,
+      "arch": "efficientnet_b0",
+      "benchmarks": {
+        "dataset_acc": 0.9,
+        "faces_acc": 0.99,
+        "ciplab_acc": 0.51
+      }
+    },
+    "ultra_4": {
+      "file": "models/ultra_4.pkl",
+      "size_mb": 16.4,
+      "md5": "b6b15e29",
+      "family": "manipulation",
+      "in_ensemble": false,
+      "class": "EfficientNet",
+      "num_classes": 2,
+      "arch": "efficientnet_b0",
+      "benchmarks": {
+        "dataset_acc": 0.88,
+        "faces_acc": 0.96,
+        "ciplab_acc": 0.55
+      }
+    },
+    "ultra_5": {
+      "file": "models/ultra_5.pkl",
+      "size_mb": 16.4,
+      "md5": "2edc5371",
+      "family": "manipulation",
+      "in_ensemble": false,
+      "class": "EfficientNet",
+      "num_classes": 2,
+      "arch": "efficientnet_b0",
+      "benchmarks": {
+        "dataset_acc": 0.88,
+        "faces_acc": 0.96,
+        "ciplab_acc": 0.55
+      }
+    },
+    "ultra_6": {
+      "file": "models/ultra_6.pkl",
+      "size_mb": 16.4,
+      "md5": "48268301",
+      "family": "manipulation",
+      "in_ensemble": true,
+      "class": "EfficientNet",
+      "num_classes": 2,
+      "arch": "efficientnet_b0",
+      "benchmarks": {
+        "dataset_acc": 0.91,
+        "faces_acc": 0.99,
+        "ciplab_acc": 0.52
+      }
+    },
+    "ultra_8": {
+      "file": "models/ultra_8.pkl",
+      "size_mb": 16.4,
+      "md5": "5e01d74d",
+      "family": "manipulation",
+      "in_ensemble": true,
+      "class": "EfficientNet",
+      "num_classes": 2,
+      "arch": "efficientnet_b0",
+      "benchmarks": {
+        "dataset_acc": 0.88,
+        "faces_acc": 0.98,
+        "ciplab_acc": 0.5
+      }
+    },
+    "xray_0": {
+      "file": "models/xray_0.pkl",
+      "size_mb": 16.4,
+      "md5": "81fe6449",
+      "family": "medical",
+      "in_ensemble": false,
+      "class": "EfficientNet",
+      "num_classes": 2,
+      "arch": "efficientnet_b0"
+    },
+    "xray_1": {
+      "file": "models/xray_1.pkl",
+      "size_mb": 16.4,
+      "md5": "1085e681",
+      "family": "medical",
+      "in_ensemble": false,
+      "class": "EfficientNet",
+      "num_classes": 2,
+      "arch": "efficientnet_b0"
+    },
+    "xray_2": {
+      "file": "models/xray_2.pkl",
+      "size_mb": 16.4,
+      "md5": "9087d734",
+      "family": "medical",
+      "in_ensemble": false,
+      "class": "EfficientNet",
+      "num_classes": 2,
+      "arch": "efficientnet_b0"
+    },
+    "xray_3": {
+      "file": "models/xray_3.pkl",
+      "size_mb": 16.4,
+      "md5": "a5ea639f",
+      "family": "medical",
+      "in_ensemble": false,
+      "class": "EfficientNet",
+      "num_classes": 2,
+      "arch": "efficientnet_b0"
+    }
+  }
+}
