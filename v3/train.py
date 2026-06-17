@@ -185,7 +185,7 @@ def merge(*models: nn.Module) -> nn.Module:
 		out_model.load_state_dict(merged)
 		return out_model
 
-TRAIN_BUFFER: list[tuple[Tensor, int]] = []
+TRAIN_BUFFER: list[tuple[Tensor, int]] = None # type: ignore
 def online_training(
 	samples: Sequence[pil.Image] | Tensor, 
 	preds: Sequence[float] | Tensor,
