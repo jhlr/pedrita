@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 from pathlib import Path
 import argparse, sys
-from PIL import Image
 import __init__ as pedrita
 from datetime import datetime as dt
+
 
 def parse_args(argv) -> argparse.Namespace:
 	parser = argparse.ArgumentParser(prog='pedrita')
@@ -23,9 +23,7 @@ def parse_args(argv) -> argparse.Namespace:
 	p_test.add_argument('--cpu', action='store_true', default=False, help='force CPU usage')
 	p_test.add_argument('--limit', '-l', type=int, default=None, help='limit the number of evaluation samples (for quick tests)')
 
-	p_video = sub.add_parser('video', help='run frame-wise prediction on a video file')
-	p_video.add_argument('--video', '-v', required=True, help='path to video file')
-	p_video.add_argument('--nframes', '-n', type=int, default=30, help='randomly sample up to N frames from the video for prediction')
+	# 'video' and 'detect' subcommands are disabled (video.py / localize.py commented out).
 	return parser.parse_args(argv)
 
 def main():
@@ -35,6 +33,8 @@ def main():
 	if first == 'merge':
 		argv = argv[1:]
 		return cli_merge(argv)
+	if first == 'gemini':
+		return cli_gemini(argv[1:])
 	model_path = Path(argv.pop(1))
 	if not model_path.is_file():
 		raise ValueError(f'Please provide a valid model') from None
@@ -43,15 +43,14 @@ def main():
 	argv.image = Path(argv.image) if argv.image else None
 	pedrita.best_device(getattr(argv, 'cpu', False))
 	pedrita.set_model(model_path)
-	
+	pedrita.online_training(None, None) # type: ignore
+
 	now = dt.now()
 	dict(
-		train=cli_train, 
-	  	test=cli_test, 
-	  	video=cli_video,
+		train=cli_train,
+	  	test=cli_test,
 	)[argv.cmd](argv)
 	print(dt.now() - now)
-
 def cli_test(argv):
 	# If evaluation requested, run and exit
 	if argv.image.is_dir():
@@ -60,12 +59,11 @@ def cli_test(argv):
 	elif not argv.image.is_file():
 		raise ValueError('Please provide a valid image file') from None
 
-	img = Image.open(argv.image)
-	prob, cam_img = pedrita.heatmap(img)
+	prob, cam_img = pedrita.heatmap(argv.image, minmax=True)
 	print(f'Proba real: {prob*100:.2f} %')
 
 	if cam_img is not None:
-		fname = 'heatmap.jpg'
+		fname = 'heatmap.png'
 		cam_img.save(fname)
 		print(fname)
 
@@ -87,15 +85,43 @@ def cli_train(argv):
 	pedrita.evaluate_folder(test_dir, 
 		limit=argv.limit*0.2 if argv.limit else None)
 
-def cli_video(argv):
-	results = pedrita.predict_video(
-		video_path=argv.video,
-		num_frames=argv.nframes,
-	)
-	print(results)
+def cli_gemini(argv):
+	import json as _json
+	ap = argparse.ArgumentParser(prog='pedrita gemini', description='Gemini contextual analysis (JSON)')
+	ap.add_argument('--image', '-i', required=True, help='path to image file')
+	ap.add_argument('--model', '-m', default=None, help='override Gemini model id')
+	ap.add_argument('--lang', default='Portuguese', help='language for description/opinion')
+	a = ap.parse_args(argv)
+	img = Path(a.image)
+	if not img.is_file():
+		raise ValueError('Please provide a valid image file') from None
+	result = pedrita.gemini.context(img, model=a.model, lang=a.lang)
+	print(_json.dumps(result, ensure_ascii=False, indent=2))
+
+# cli_detect / cli_video are disabled (localize.py / video.py commented out).
+# def cli_detect(argv):
+# 	img = argv.image
+# 	if not img or not img.is_file():
+# 		raise ValueError('Please provide a valid image file') from None
+# 	names = [s for s in argv.sources.split(',') if s.strip()]
+# 	localizers = pedrita.localize.build(names, grid=argv.grid)
+# 	result = pedrita.localize.fuse(img, localizers, alpha=argv.alpha)
+# 	for s in result['sources']:
+# 		if s['ok']:
+# 			print(f"  {s['name']}: score_fake={s['score_fake']*100:.2f} %")
+# 		else:
+# 			print(f"  {s['name']}: FAILED ({s['error']})")
+# 	if result['score_fake'] is not None:
+# 		print(f"Fused score_fake: {result['score_fake']*100:.2f} %")
+# 	fname = 'detect_heatmap.png'
+# 	result['heatmap'].save(fname)
+# 	print(fname)
+#
+# def cli_video(argv):
+# 	results = pedrita.predict_video(video_path=argv.video, num_frames=argv.nframes)
+# 	print(results)
 
 def cli_merge(argv):
-	# alpha is always 0.5
 	# model paths in order
 	# destination is third path or models/merged.pkl
 	mnames = [Path(p) for p in argv[0:2]]
@@ -104,9 +130,9 @@ def cli_merge(argv):
 		raise ValueError(f'Please provide two valid model files to merge') from None
 	m_a = pedrita.set_model(mnames[0])
 	m_b = pedrita.set_model(mnames[1])
-	out_model = pedrita.merge(m_a, m_b, alpha=0.5)
+	out_model = pedrita.merge(m_a, m_b)
 	pedrita.set_model(out_model)
 	print('Merged model: ')
 	pedrita.save_model(outname)
-
+	
 if __name__ == '__main__': main()

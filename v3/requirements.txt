@@ -7,6 +7,7 @@ cycler==0.12.1
 filelock==3.29.0
 fonttools==4.62.1
 fsspec==2026.3.0
+google-genai==2.8.0
 grad-cam==1.5.5
 h11==0.16.0
 hf-xet==1.4.3
@@ -14,6 +15,7 @@ httpcore==1.0.9
 httpx==0.28.1
 huggingface_hub==1.12.0
 idna==3.13
+python-dotenv==1.1.1
 Jinja2==3.1.6
 joblib==1.5.3
 kiwisolver==1.5.0

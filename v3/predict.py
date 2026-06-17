@@ -2,6 +2,7 @@ import numpy as np
 from typing import List, Optional, Sequence
 from pathlib import Path
 from PIL import Image as pil
+from PIL import ImageOps as pilops
 from datetime import datetime as dt
 
 import torch
@@ -11,78 +12,137 @@ from pytorch_grad_cam import GradCAM
 from pytorch_grad_cam.utils.image import show_cam_on_image
 from pytorch_grad_cam.utils.model_targets import ClassifierOutputTarget
 
-try: from . import helper
+try:
+	from . import helper, tracking
+	from .train import *
 except ImportError:
-	import helper
+	import helper, tracking
+	from train import *
 
-__all__ = ['heatmap', 'predict', 'evaluate_folder']
+__all__ = ['heatmap', 'predict', 'evaluate_folder', 'predict_grid', 'heatmap_grid']
 
 @helper.timer
-def heatmap(img_rgb) -> tuple[float, pil.Image]:
-	# Predict probability of "real" and generate a Grad-CAM heatmap for the input pil
-	# This function uses the difference between the "real" and "fake" class activations to produce a single heatmap.
-	if isinstance(img_rgb, str):
-		img_rgb = pil.open(img_rgb).convert('RGB')
-	tr = helper.transform()
-	device = helper.best_device()
-	tensor = tr(img_rgb)
-	tensor = tensor.unsqueeze(0).to(device, non_blocking=True)  # type: ignore
+def heatmap(img_rgb, minmax: bool = False, return_grey: bool = False):
+	with helper.rlock:
+		device = helper.best_device()
+		helper.model.eval()
+		helper.model.to(device)
 
-	helper.model.eval()
-	helper.model.to(device)
-	with torch.no_grad():
-		logits = helper.expand(helper.model(tensor))
-		probs = logits.softmax(dim=1)
+		# Predict probability of "real" and generate a Grad-CAM heatmap for the input pil
+		# This function uses the difference between the "real" and "fake" class activations to produce a single heatmap.
+		if isinstance(img_rgb, (str, Path)):
+			img_rgb = pil.open(str(img_rgb)).convert('RGB')
+		tr = helper.transform()
+		tensor = tr(img_rgb)
+		tensor = tensor.unsqueeze(0).to(device, non_blocking=True)  # type: ignore
+		with torch.no_grad():
+			logits = helper.expand(helper.model(tensor))
+			probs = logits.softmax(dim=1)
 
-	# find last Conv2d as target layer
-	layer = getattr(helper.model, 'conv_head', None)
-	if layer is None:
-		for m in reversed(list(helper.model.modules())):
-			if isinstance(m, torch.nn.Conv2d):
-				layer = m
-				break
+		# find last Conv2d as target layer
+		layer = getattr(helper.model, 'conv_head', None)
 		if layer is None:
-			raise RuntimeError('target layer for Grad-CAM not found')
+			for m in reversed(list(helper.model.modules())):
+				if isinstance(m, torch.nn.Conv2d):
+					layer = m
+					break
+			if layer is None:
+				raise RuntimeError('target layer for Grad-CAM not found')
 
-	def cam_target(label: str , cam: GradCAM):
-		tgt = ClassifierOutputTarget(helper.LABEL[label])
-		greyscale = cam(input_tensor=tensor, targets=[tgt])[0] # type: ignore
-		return np.array(pil.fromarray(greyscale).resize(img_rgb.size))
-	
-	with GradCAM(model=helper.model, target_layers=[layer]) as cam:
-		fake_cam_img = cam_target('fake', cam)
-		real_cam_img = cam_target('real', cam)
-		greyscale = fake_cam_img - real_cam_img
-		min, max = greyscale.min(), greyscale.max()
-		greyscale = (greyscale - min) / (max - min + 1e-8)
+		def cam_target(label: str , cam: GradCAM):
+			tgt = ClassifierOutputTarget(helper.LABEL[label])
+			greyscale = cam(input_tensor=tensor, targets=[tgt])[0] # type: ignore
+			return np.array(pil.fromarray(greyscale).resize(img_rgb.size))
 		
-		cam_img = show_cam_on_image(np.array(img_rgb) / 255.0, greyscale, use_rgb=True)
-	return probs[0, helper.LABEL['real']].item(), pil.fromarray(cam_img)
+		with GradCAM(model=helper.model, target_layers=[layer]) as cam:
+			fake_cam_img = cam_target('fake', cam)
+			real_cam_img = cam_target('real', cam)
+			greyscale = fake_cam_img - real_cam_img
+			if minmax:
+				min, max = greyscale.min(), greyscale.max()
+				greyscale = (greyscale - min) / (max - min + 1e-8)
+			else: greyscale = greyscale / 2 + 0.5
+			greyscale = np.clip(greyscale, 0, 1)
+			cam_img = show_cam_on_image(np.array(img_rgb) / 255.0, greyscale, use_rgb=True)
+		
+	online_training(tensor, probs[:, helper.LABEL['real']]) # type: ignore
+	prob_real = probs[0, helper.LABEL['real']].item()
+	if return_grey:
+		return prob_real, pil.fromarray(cam_img), greyscale
+	return prob_real, pil.fromarray(cam_img)
 
 def predict(imgs_rgb: Sequence | Tensor) -> List[float]:
-	# Predict probabilities of "real" for a batch of input pil images or tensors.
-	# Returns a list of floats in [0,1].
-	if imgs_rgb is None:
-		return []
+	with helper.rlock:
+		# Predict probabilities of "real" for a batch of input pil images or tensors.
+		# Returns a list of floats in [0,1].
+		if imgs_rgb is None:
+			return []
 
-	device = helper.best_device()
-	helper.model.eval()
-	helper.model.to(device)
+		device = helper.best_device()
+		helper.model.eval()
+		helper.model.to(device)
 
-	if not isinstance(imgs_rgb, Tensor):
-		tr = helper.transform(train=False)
-		imgs_rgb = [tr(img) for img in imgs_rgb]
-		imgs_rgb = torch.stack(imgs_rgb)
+		if not isinstance(imgs_rgb, Tensor):
+			tr = helper.transform(train=False)
+			imgs_rgb = [tr(img) for img in imgs_rgb]
+			imgs_rgb = torch.stack(imgs_rgb)
 
-	# If already a batched tensor [B,C,H,W]
-	while imgs_rgb.ndim <= 3:
-		# single image tensor C,H,W -> make batch
-		imgs_rgb.unsqueeze_(0)
-	batch = imgs_rgb.to(device, non_blocking=True)
-	with torch.no_grad():
-		logits = helper.expand(helper.model(batch))
-		probs = logits.softmax(dim=1)[:, helper.LABEL['real']]
-		return probs.cpu().tolist()
+		# If already a batched tensor [B,C,H,W]
+		while imgs_rgb.ndim <= 3:
+			# single image tensor C,H,W -> make batch
+			imgs_rgb.unsqueeze_(0)
+		batch = imgs_rgb.to(device, non_blocking=True)
+		with torch.no_grad():
+			logits = helper.expand(helper.model(batch))
+			probs = logits.softmax(dim=1)[:, helper.LABEL['real']]
+
+	online_training(batch.detach(), probs) # type: ignore
+	return probs.cpu().tolist()
+
+# instead of receiving the number of sections, we could receive the pixel resolution
+# small images should have a single section, while larger images could be divided into more sections for finer-grained analysis.
+def predict_grid(img_rgb: pil.Image, section_size: int = 224, batch_size: int = 32) -> Tensor:
+	# Predict probabilities of "real" for each section of the input pil image.
+	# This function divides the input image into sections of the specified size and runs prediction on each section independently, returning a list of probabilities for each section.
+	w, h = img_rgb.size
+	probs = []
+	batch = []
+	for i in range(0, w, section_size):
+		for j in range(0, h, section_size):
+			left = i
+			upper = j
+			right = min(i + section_size, w)
+			lower = min(j + section_size, h)
+			section = img_rgb.crop((left, upper, right, lower))
+			batch.append(section)
+			if len(batch) == batch_size:
+				probs.extend(predict(batch))
+				batch = []
+	if batch: probs.extend(predict(batch))
+	grid_w = (w + section_size - 1) // section_size
+	grid_h = (h + section_size - 1) // section_size
+	grid = torch.tensor(probs).reshape((grid_h, grid_w))
+	return grid
+
+def heatmap_grid(img_rgb: pil.Image, section_size: int = 224) -> pil.Image:
+	# Generate a heatmap image from the grid of probabilities.
+	# This function takes the grid of probabilities for each section and creates a heatmap image where the intensity of each section corresponds to the predicted probability of being "real".
+	w, h = img_rgb.size
+	grid = predict_grid(img_rgb, section_size=section_size)
+	heatmap = pil.new('L', (w, h))
+	for i in range(0, w, section_size):
+		for j in range(0, h, section_size):
+			left = i
+			upper = j
+			right = min(i + section_size, w)
+			lower = min(j + section_size, h)
+			prob = grid[j//section_size, i//section_size]
+			intensity = int(prob * 255)
+			patch = pil.new('L', (right - left, lower - upper), color=intensity)
+			heatmap.paste(patch, (left, upper))
+	# heatmap as rainbow overlay blue to red
+	heatmap = pilops.colorize(heatmap, black='blue', white='red', mid='green')
+	return pil.blend(img_rgb, heatmap, alpha=0.3)
 
 @helper.timer
 def evaluate_folder(
@@ -90,24 +150,34 @@ def evaluate_folder(
 	batch_size: int = 32, 
 	thresh: float = 0.7,
 	limit: Optional[int] = None,
-) -> float:
+) -> tuple[Tensor, float]:
 	# Run prediction on all images in the specified folder (with 'real' and 'fake' subfolders) 
-	# This is a simple evaluation function 
+	# This is a simple evaluation function
 	# that processes the test set in batches and prints out the percentages of wrong/sure/dunno predictions based on the specified threshold.
-	now = dt.now()
-	test_dir = helper.DirDataset(test_dir, 'test',
-		shuffle=True, limit=limit, transform=helper.transform(train=False))
-	print(dt.now() - now)
-	probs: list = [] 
-	ylabels: list = []
-	for b in range(0, len(test_dir), batch_size):
-		batch_imgs = []
-		batch_labels = []
-		for i in range(b, min(b + batch_size, len(test_dir))):
-			img, label = test_dir[i]
-			batch_imgs.append(img)
-			batch_labels.append(label)
-		batch_imgs = torch.stack(batch_imgs)
-		probs.extend(predict(batch_imgs))
-		ylabels.extend(batch_labels)
-	return helper.compare(probs, ylabels, thresh=thresh)
+	with tracking.run('evaluation', f'eval_{dt.now().isoformat()}', params=dict(
+		folder=str(test_dir), limit=int(limit) if limit else -1,
+		thresh=thresh, batch_size=batch_size,
+	)):
+		tracking.log_model(helper.model, name='evaluation_model')
+
+		now = dt.now()
+		test_dir = helper.DirDataset(test_dir, 'test',
+			shuffle=True, limit=limit, transform=helper.transform(train=False))
+		print(dt.now() - now)
+		probs: list = []
+		ylabels: list = []
+		for b in range(0, len(test_dir), batch_size):
+			batch_imgs = []
+			batch_labels = []
+			for i in range(b, min(b + batch_size, len(test_dir))):
+				img, label = test_dir[i]
+				batch_imgs.append(img)
+				batch_labels.append(label)
+			batch_imgs = torch.stack(batch_imgs)
+			probs.extend(predict(batch_imgs))
+			ylabels.extend(batch_labels)
+		diff, acc, stats = helper.compare(probs, ylabels, thresh=thresh)
+		tracking.log_metrics({f'eval/{k}': v for k, v in stats.items()})
+		tracking.log_confusion_figure(stats)
+
+		return diff, acc

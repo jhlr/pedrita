@@ -1,28 +1,63 @@
 import joblib
 from pathlib import Path
-from typing import Sequence, cast
+from typing import cast
 from PIL import Image as pil
 from datetime import datetime as dt
 from functools import wraps
 
+from collections.abc import Callable, Sequence
 import torch
 from torch.nn import Module
 from torch import Tensor
 import torch.nn.functional as F
+from readerwriterlock import rwlock
 
 from torchvision import transforms as tforms
 from torchvision.transforms.functional import to_pil_image
 
-try: from .dset import *
+from glob import glob
+from sklearn.model_selection import train_test_split
+
+try: from .dset import DirDataset
 except ImportError:
-	from dset import *
+	from dset import DirDataset
+
+try:
+	import logging
+	class MLflowPickleWarningFilter(logging.Filter):
+		def filter(self, record):
+			# Drop the log if it contains the word "Pickle" and "CloudPickle"
+			return "Pickle or CloudPickle format requires" not in record.getMessage()
+	# Apply the filter to the target MLflow logger
+	logging.getLogger("mlflow.pytorch").addFilter(MLflowPickleWarningFilter())
+	logging.getLogger("mlflow").addFilter(MLflowPickleWarningFilter())
+except Exception: pass
 
 __all__ = [
-	'LABEL', 'num_classes', 
+	'LABEL', 'num_classes',
 	'set_model', 'save_model',
 	'freeze', 'best_device', 'timer',
-	'transform', 'to_pil', 'expand', 'compare', 
+	'transform', 'to_pil', 'expand',
+	'compare', 'DirDataset', 'seed_all',
 ]
+
+import os, random
+
+# Default seed for reproducibility; override with PEDRITA_SEED.
+SEED = int(os.environ.get('PEDRITA_SEED', 42))
+
+
+def seed_all(seed: int | None = None) -> int:
+	"""Seed Python/NumPy/torch RNGs for reproducible runs. Returns the seed used."""
+	import numpy as np
+	if seed is None:
+		seed = SEED
+	random.seed(seed)
+	np.random.seed(seed)
+	torch.manual_seed(seed)
+	if torch.cuda.is_available():
+		torch.cuda.manual_seed_all(seed)
+	return int(seed)
 
 # Match training mapping: 0 = fake, 1 = real
 LABEL_NAMES = ['fake', 'real', 'other']
@@ -34,6 +69,10 @@ model: Module = None # type: ignore
 device: torch.device = None # type: ignore
 retrained: bool = False
 force_cpu: bool = False
+
+marker = rwlock.RWLockFair()
+rlock = marker.gen_rlock()
+wlock = marker.gen_wlock()
 
 def num_classes() -> int:
 	global model
@@ -204,8 +243,8 @@ def transform(train: bool = False, norm: bool = True) -> Callable[..., Tensor]:
 	]
 	if norm: compose.append(tforms.Normalize(
 		mean=cfg['mean'], std=cfg['std'],
-	))
-	if train: compose[3:3] = [
+	)) # type: ignore
+	if train: compose[3:3] = [ # type: ignore
 		tforms.GaussianBlur(kernel_size=3, sigma=(0.1, 2.0)),
 		tforms.RandomRotation(degrees=15),
 		tforms.RandomHorizontalFlip(p=0.5),
@@ -222,14 +261,14 @@ def expand(logits: Tensor) -> Tensor:
 	return logits
 
 def compare(
-	p_final: Tensor | Sequence[float], 
-	y_test: Tensor | Sequence[float], 
+	p_final: Tensor | Sequence[float],
+	y_test: Tensor | Sequence[float],
 	thresh=0.7,
-) -> float:
-	'''Print simple evaluation statistics and return the probabilities.
+) -> tuple[Tensor, float, dict]:
+	'''Print evaluation statistics and return (residuals, accuracy, stats).
 
-	Metrics printed are percentages of wrong/sure/dunno relative to the
-	total number of samples.
+	Printed/returned metrics are fractions of wrong/sure/dunno relative to the
+	total number of samples. `stats` is a flat dict suitable for MLflow logging.
 	'''
 	if thresh > 0.5: thresh = 1 - thresh
 	p_final = Tensor(p_final)
@@ -250,14 +289,25 @@ def compare(
 	dunno = ~(is_high | is_low)
 	d_r = torch.sum(is_real & dunno)
 	d_f = torch.sum(is_fake & dunno)
-	total = len(y_test)
+	total = max(len(y_test), 1)
 	print(f'Total {total}:')
-	print(f'  Label\t\tW\tS\tD{thresh*100:0.0f}%')
-	print(f'  Real\t\t{w_r/total:2.1%}\t{s_r/total:2.1%}\t{d_r/total:2.1%}')
-	print(f'  Fake\t\t{w_f/total:2.1%}\t{s_f/total:2.1%}\t{d_f/total:2.1%}')
+	print(f'  Label\t', f'W', f'S', f'D{thresh*100:0.0f}%', sep='\t')
+	print('  ------------------------------------')
+	print(f'  Real\t', f'{w_r/total:2.1%}', f'{s_r/total:2.1%}', f'{d_r/total:2.1%}', sep='\t')
+	print(f'  Fake\t', f'{w_f/total:2.1%}', f'{s_f/total:2.1%}', f'{d_f/total:2.1%}', sep='\t')
 	s_total = (s_f + s_r) / total
-	print(f'  Overall\t{(w_f+w_r)/total:2.1%}\t{s_total:2.1%}\t{(d_f+d_r)/total:2.1%}')
-	return s_total.item()
+	print('  ------------------------------------')
+	print(f'  Overall', f'{(w_f+w_r)/total:2.1%}', f'{s_total:2.1%}', f'{(d_f+d_r)/total:2.1%}', sep='\t')
+	stats = {
+		'accuracy': s_total.item(),
+		'wrong': ((w_f + w_r) / total).item(),
+		'dunno': ((d_f + d_r) / total).item(),
+		'sure_real': (s_r / total).item(), 'wrong_real': (w_r / total).item(),
+		'dunno_real': (d_r / total).item(),
+		'sure_fake': (s_f / total).item(), 'wrong_fake': (w_f / total).item(),
+		'dunno_fake': (d_f / total).item(),
+	}
+	return p_final - y_test, s_total.item(), stats
 
 def save_model(mpath: str | Path) -> Module:
 	"""Save the given model to disk with the specified name."""
@@ -285,3 +335,29 @@ def timer(func):
 		try: return func(*args, **kwargs)
 		finally: print(dt.now() - now)
 	return wraps(func)(wrapper)
+
+def split_folder(folder: Path):
+	real = glob(str(folder / 'real' / '*'))
+	fake = glob(str(folder / 'fake' / '*'))
+	real_train, real_test = train_test_split(real, test_size=0.2)
+	fake_train, fake_test = train_test_split(fake, test_size=0.2)
+	for f in real_train:
+		sub = folder / 'train' / 'real'
+		sub.mkdir(parents=True, exist_ok=True)
+		f = Path(f)
+		f.rename(sub / f.name)
+	for f in real_test:
+		sub = folder / 'test' / 'real'
+		sub.mkdir(parents=True, exist_ok=True)
+		f = Path(f)
+		f.rename(sub / f.name)
+	for f in fake_train:
+		sub = folder / 'train' / 'fake'
+		sub.mkdir(parents=True, exist_ok=True)
+		f = Path(f)
+		f.rename(sub / f.name)
+	for f in fake_test:
+		sub = folder / 'test' / 'fake'
+		sub.mkdir(parents=True, exist_ok=True)
+		f = Path(f)
+		f.rename(sub / f.name)

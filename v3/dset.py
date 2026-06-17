@@ -1,11 +1,16 @@
 from __future__ import annotations
 from pathlib import Path
-import random
-from datetime import datetime as dt
+import os, random
 from glob import glob
-from typing import List, Callable
+from collections.abc import Callable
+from typing import List
 from torch.utils.data import Dataset
-random.seed(dt.now().timestamp())
+
+# Reproducible by default. Override with PEDRITA_SEED (e.g. PEDRITA_SEED=0).
+SEED = int(os.environ.get('PEDRITA_SEED', 42))
+random.seed(SEED)
+
+__all__ = ['DirDataset']
 
 def _pics_from_dir(d: str | Path | None, /) -> List[str]:
 	if not d: return []
@@ -67,5 +72,14 @@ class DirDataset(Dataset):
 		new.samples = list(self.samples) + list(other.samples)
 		random.shuffle(new.samples)
 		return new
-
-
+	
+	@staticmethod
+	def mixed(dirs: dict[str|Path, int]) -> DirDataset:
+		# Create a mixed dataset from multiple directories, each with a specified label.
+		total = None
+		for d, num_samples in dirs.items():
+			if total is None:
+				total = DirDataset(d, limit=num_samples)
+			else:
+				total += DirDataset(d, limit=num_samples)
+		return total # type: ignore[return-value]
