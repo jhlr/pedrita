@@ -207,6 +207,14 @@ def log_inference(
 				blobs.append((fname, 'json', 'application/json',
 					json.dumps(dict(obj), ensure_ascii=False).encode('utf-8')))
 
+		# Record the received image's sha256 as a queryable run tag, so every record
+		# in the DB is tied to — and dedup-able by — its source image.
+		tags = dict(tags or {})
+		recv = next((d for (n, k, m, d) in blobs if n == 'received.png'), None)
+		if recv is not None:
+			import hashlib
+			tags.setdefault('image_sha256', hashlib.sha256(recv).hexdigest())
+
 		sqlite_store = _sqlite_path() is not None
 		run_uuid = None
 		with run(experiment, name, params=params, tags=tags) as active:
