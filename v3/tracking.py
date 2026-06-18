@@ -135,25 +135,36 @@ def _png_bytes(img) -> bytes | None:
 
 
 def _store_blobs(run_uuid: str, blobs: list) -> None:
-	"""Persist artifact bytes *inside* the SQLite mlflow.db (table inference_artifacts),
-	keeping everything in a single self-contained file (no mlartifacts/ folder)."""
+	"""Persist artifact bytes *inside* the SQLite mlflow.db, content-addressed.
+
+	Bytes live once in `artifact_blobs` keyed by their sha256 (INSERT OR IGNORE),
+	and `inference_artifacts` links each run to a blob by that hash. Identical
+	images — re-uploads, or the same picture seen by separate endpoints — are thus
+	stored a single time, with every run still pointing at it. Everything stays in
+	one self-contained file (no mlartifacts/ folder)."""
 	path = _sqlite_path()
 	if not path or not blobs:
 		return
-	import sqlite3, time
+	import sqlite3, time, hashlib
 	con = sqlite3.connect(path, timeout=30)
 	try:
 		con.execute(
+			'CREATE TABLE IF NOT EXISTS artifact_blobs ('
+			' sha256 TEXT PRIMARY KEY, mime TEXT, size INTEGER, data BLOB, created REAL)')
+		con.execute(
 			'CREATE TABLE IF NOT EXISTS inference_artifacts ('
 			' id INTEGER PRIMARY KEY AUTOINCREMENT,'
-			' run_uuid TEXT, name TEXT, kind TEXT, mime TEXT,'
-			' size INTEGER, data BLOB, created REAL)')
+			' run_uuid TEXT, name TEXT, kind TEXT, sha256 TEXT, created REAL)')
 		con.execute('CREATE INDEX IF NOT EXISTS ix_infart_run ON inference_artifacts(run_uuid)')
 		now = time.time()
-		con.executemany(
-			'INSERT INTO inference_artifacts (run_uuid,name,kind,mime,size,data,created)'
-			' VALUES (?,?,?,?,?,?,?)',
-			[(run_uuid, n, k, m, len(d), d, now) for (n, k, m, d) in blobs])
+		for (name, kind, mime, data) in blobs:
+			sha = hashlib.sha256(data).hexdigest()
+			con.execute(
+				'INSERT OR IGNORE INTO artifact_blobs (sha256,mime,size,data,created)'
+				' VALUES (?,?,?,?,?)', (sha, mime, len(data), data, now))
+			con.execute(
+				'INSERT INTO inference_artifacts (run_uuid,name,kind,sha256,created)'
+				' VALUES (?,?,?,?,?)', (run_uuid, name, kind, sha, now))
 		con.commit()
 	finally:
 		con.close()

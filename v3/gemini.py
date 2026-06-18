@@ -129,7 +129,7 @@ _CONTEXT_PROMPT = (
 )
 
 
-def context(img, model: Optional[str] = None, lang: str = 'Portuguese') -> Dict:
+def context(img, model: Optional[str] = None, lang: str = 'Portuguese', track: bool = True) -> Dict:
 	"""Return a structured contextual analysis of the image.
 
 	Keys: scene_description (str), coherence ({plausible, opinion}),
@@ -180,7 +180,7 @@ def context(img, model: Optional[str] = None, lang: str = 'Portuguese') -> Dict:
 		from . import tracking
 	except Exception:
 		tracking = None
-	if tracking is not None:
+	if track and tracking is not None:
 		tracking.log_inference(
 			'gemini',
 			params={'manipulation_certainty': certainty, 'criticality': level},

@@ -19,10 +19,10 @@ except ImportError:
 	import helper, tracking
 	from train import *
 
-__all__ = ['heatmap', 'predict', 'evaluate_folder', 'predict_grid', 'heatmap_grid']
+__all__ = ['heatmap', 'heatmap_context', 'predict', 'evaluate_folder', 'predict_grid', 'heatmap_grid']
 
 @helper.timer
-def heatmap(img_rgb, minmax: bool = False, return_grey: bool = False):
+def heatmap(img_rgb, minmax: bool = False, return_grey: bool = False, track: bool = True):
 	with helper.rlock:
 		device = helper.best_device()
 		helper.model.eval()
@@ -69,17 +69,56 @@ def heatmap(img_rgb, minmax: bool = False, return_grey: bool = False):
 	prob_real = probs[0, helper.LABEL['real']].item()
 	heatmap_img = pil.fromarray(cam_img)
 
-	tracking.log_inference(
-		'heatmap',
-		params={'prob_real': prob_real},
-		metrics={'prob_real': prob_real, 'manipulation_pct': (1.0 - prob_real) * 100.0},
-		images={'received.png': img_rgb, 'heatmap.png': heatmap_img},
-		tags={'kind': 'heatmap'},
-	)
+	if track:
+		tracking.log_inference(
+			'heatmap',
+			params={'prob_real': prob_real},
+			metrics={'prob_real': prob_real, 'manipulation_pct': (1.0 - prob_real) * 100.0},
+			images={'received.png': img_rgb, 'heatmap.png': heatmap_img},
+			tags={'kind': 'heatmap'},
+		)
 
 	if return_grey:
 		return prob_real, heatmap_img, greyscale
 	return prob_real, heatmap_img
+
+
+def heatmap_context(img_rgb, lang: str = 'Portuguese', gemini_model=None):
+	"""Forensic heatmap + Gemini context on the SAME image, as one MLflow run.
+
+	Runs both analyses with their individual tracking suppressed and logs a single
+	combined run, so the received image is stored ONCE and tied to both results
+	(no duplication in the DB). Returns ``(prob_real, heatmap_img, context)``.
+	"""
+	if isinstance(img_rgb, (str, Path)):
+		img_rgb = pil.open(str(img_rgb)).convert('RGB')
+
+	prob_real, heatmap_img = heatmap(img_rgb, track=False)
+
+	try:
+		from . import gemini
+	except ImportError:
+		import gemini
+	ctx = gemini.context(img_rgb, model=gemini_model, lang=lang, track=False)
+
+	try: certainty = float(ctx.get('manipulation_certainty') or 0)
+	except (TypeError, ValueError): certainty = 0.0
+	level = (ctx.get('criticality') or {}).get('level')
+
+	tracking.log_inference(
+		'heatmap_context',
+		params={'prob_real': prob_real, 'manipulation_certainty': certainty, 'criticality': level},
+		metrics={
+			'prob_real': prob_real,
+			'manipulation_pct': (1.0 - prob_real) * 100.0,
+			'manipulation_certainty': certainty,
+		},
+		images={'received.png': img_rgb, 'heatmap.png': heatmap_img},
+		artifacts={'context.json': ctx},
+		tags={'kind': 'heatmap_context', 'manipulation_type': ctx.get('manipulation_type')},
+	)
+
+	return prob_real, heatmap_img, ctx
 
 def predict(imgs_rgb: Sequence | Tensor) -> List[float]:
 	with helper.rlock:
