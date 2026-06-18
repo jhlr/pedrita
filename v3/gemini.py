@@ -159,7 +159,7 @@ def context(img, model: Optional[str] = None, lang: str = 'Portuguese') -> Dict:
 	regions = [str(s).strip() for s in (data.get('suspect_regions') or []) if str(s).strip()]
 	evidence = [str(s).strip() for s in (data.get('evidence') or []) if str(s).strip()]
 
-	return {
+	result = {
 		'scene_description': str(data.get('scene_description', '')).strip(),
 		'coherence': {
 			'plausible': bool(coh.get('plausible', True)),
@@ -173,3 +173,21 @@ def context(img, model: Optional[str] = None, lang: str = 'Portuguese') -> Dict:
 		'recommended_action': action,
 		# 'text_in_image': str(data.get('text_in_image', '')).strip(),  # OCR (disabled)
 	}
+
+	# Persist received image + generated context as an MLflow run (best-effort;
+	# imported lazily so this module stays usable without torch/mlflow installed).
+	try:
+		from . import tracking
+	except Exception:
+		tracking = None
+	if tracking is not None:
+		tracking.log_inference(
+			'gemini',
+			params={'manipulation_certainty': certainty, 'criticality': level},
+			metrics={'manipulation_certainty': certainty},
+			images={'received.png': image},
+			artifacts={'context.json': result},
+			tags={'kind': 'gemini', 'manipulation_type': mtype},
+		)
+
+	return result

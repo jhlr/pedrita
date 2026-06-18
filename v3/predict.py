@@ -67,9 +67,19 @@ def heatmap(img_rgb, minmax: bool = False, return_grey: bool = False):
 		
 	online_training(tensor, probs[:, helper.LABEL['real']]) # type: ignore
 	prob_real = probs[0, helper.LABEL['real']].item()
+	heatmap_img = pil.fromarray(cam_img)
+
+	tracking.log_inference(
+		'heatmap',
+		params={'prob_real': prob_real},
+		metrics={'prob_real': prob_real, 'manipulation_pct': (1.0 - prob_real) * 100.0},
+		images={'received.png': img_rgb, 'heatmap.png': heatmap_img},
+		tags={'kind': 'heatmap'},
+	)
+
 	if return_grey:
-		return prob_real, pil.fromarray(cam_img), greyscale
-	return prob_real, pil.fromarray(cam_img)
+		return prob_real, heatmap_img, greyscale
+	return prob_real, heatmap_img
 
 def predict(imgs_rgb: Sequence | Tensor) -> List[float]:
 	with helper.rlock:

@@ -14,15 +14,26 @@ Conventions that make the MLflow UI chart things automatically:
 from __future__ import annotations
 
 import os
+import logging
+from pathlib import Path
 from contextlib import contextmanager
 from collections.abc import Mapping
 
 import mlflow
 
+logger = logging.getLogger(__name__)
+
+# Anchor the store to the package dir (api/pedrita) so the DB and artifacts land
+# in the same place no matter the process CWD (e.g. uvicorn started from backend/).
+_PKG_DIR = Path(__file__).resolve().parents[1]
+
 # SQLite backend (the file store './mlruns' is deprecated as of Feb 2026).
-# Metrics/params/runs live in the DB; artifacts (figures) go under ./mlartifacts.
-TRACKING_URI = os.environ.get('MLFLOW_TRACKING_URI', 'sqlite:///mlflow.db')
+# Metrics/params/runs live in the DB; artifacts (images, figures) go under mlartifacts.
+TRACKING_URI = os.environ.get('MLFLOW_TRACKING_URI', f"sqlite:///{_PKG_DIR / 'mlflow.db'}")
+ARTIFACT_ROOT = os.environ.get('MLFLOW_ARTIFACT_ROOT', str(_PKG_DIR / 'mlartifacts'))
 LOG_MODELS = os.environ.get('MLFLOW_LOG_MODELS', '0').lower() in ('1', 'true', 'yes')
+# Log every inference (received + generated artifacts) by default; opt out with =0.
+LOG_INFERENCE = os.environ.get('MLFLOW_LOG_INFERENCE', '1').lower() in ('1', 'true', 'yes')
 
 _ready = False
 
@@ -37,7 +48,7 @@ def setup(experiment: str) -> None:
 		mlflow.set_tracking_uri(TRACKING_URI)
 		_ready = True
 	if mlflow.get_experiment_by_name(experiment) is None:
-		mlflow.create_experiment(experiment, artifact_location='./mlartifacts')
+		mlflow.create_experiment(experiment, artifact_location=ARTIFACT_ROOT)
 	mlflow.set_experiment(experiment)
 
 
@@ -99,3 +110,109 @@ def log_confusion_figure(stats: Mapping, name: str = 'confusion.png') -> None:
 	fig.tight_layout()
 	mlflow.log_figure(fig, name)
 	plt.close(fig)
+
+
+def _sqlite_path() -> str | None:
+	"""Filesystem path of the SQLite store, or None if the backend isn't SQLite."""
+	prefix = 'sqlite:///'
+	return TRACKING_URI[len(prefix):] if TRACKING_URI.startswith(prefix) else None
+
+
+def _png_bytes(img) -> bytes | None:
+	"""Encode a PIL.Image (or array-like) as PNG bytes."""
+	try:
+		from PIL import Image
+		if not isinstance(img, Image.Image):
+			import numpy as np
+			img = Image.fromarray(np.asarray(img))
+		import io
+		buf = io.BytesIO()
+		img.save(buf, format='PNG')
+		return buf.getvalue()
+	except Exception as exc:
+		logger.debug('falha ao codificar imagem (ignorado): %s', exc)
+		return None
+
+
+def _store_blobs(run_uuid: str, blobs: list) -> None:
+	"""Persist artifact bytes *inside* the SQLite mlflow.db (table inference_artifacts),
+	keeping everything in a single self-contained file (no mlartifacts/ folder)."""
+	path = _sqlite_path()
+	if not path or not blobs:
+		return
+	import sqlite3, time
+	con = sqlite3.connect(path, timeout=30)
+	try:
+		con.execute(
+			'CREATE TABLE IF NOT EXISTS inference_artifacts ('
+			' id INTEGER PRIMARY KEY AUTOINCREMENT,'
+			' run_uuid TEXT, name TEXT, kind TEXT, mime TEXT,'
+			' size INTEGER, data BLOB, created REAL)')
+		con.execute('CREATE INDEX IF NOT EXISTS ix_infart_run ON inference_artifacts(run_uuid)')
+		now = time.time()
+		con.executemany(
+			'INSERT INTO inference_artifacts (run_uuid,name,kind,mime,size,data,created)'
+			' VALUES (?,?,?,?,?,?,?)',
+			[(run_uuid, n, k, m, len(d), d, now) for (n, k, m, d) in blobs])
+		con.commit()
+	finally:
+		con.close()
+
+
+def log_inference(
+	name: str,
+	*,
+	params: Mapping | None = None,
+	metrics: Mapping | None = None,
+	images: Mapping | None = None,
+	artifacts: Mapping | None = None,
+	tags: Mapping | None = None,
+	experiment: str = 'inference',
+) -> None:
+	"""Persist one inference as an MLflow run with its received + generated artifacts.
+
+	The run (params/metrics/tags) goes into MLflow's tables as usual; the binary
+	artifacts are stored *inside the same SQLite DB* as BLOBs:
+	  - images:    {filename: PIL.Image | np.ndarray} — received image + heatmap, PNG.
+	  - artifacts: {filename: json-serialisable} — e.g. the Gemini context dict.
+
+	Best-effort and non-fatal: tracking is auxiliary, so any failure (locked DB,
+	missing mlflow, etc.) is swallowed and never breaks the prediction itself.
+	Disable globally with MLFLOW_LOG_INFERENCE=0. If TRACKING_URI is not SQLite,
+	images/json fall back to MLflow's regular (filesystem) artifact store.
+	"""
+	if not LOG_INFERENCE:
+		return
+	try:
+		# Build the blobs up front so the SQLite write window stays tiny.
+		blobs = []
+		for fname, img in (images or {}).items():
+			data = _png_bytes(img) if img is not None else None
+			if data:
+				blobs.append((fname, 'image', 'image/png', data))
+		for fname, obj in (artifacts or {}).items():
+			if obj is not None:
+				import json
+				blobs.append((fname, 'json', 'application/json',
+					json.dumps(dict(obj), ensure_ascii=False).encode('utf-8')))
+
+		sqlite_store = _sqlite_path() is not None
+		run_uuid = None
+		with run(experiment, name, params=params, tags=tags) as active:
+			if metrics:
+				log_metrics(metrics)
+			run_uuid = active.info.run_id
+			if not sqlite_store:
+				# Non-SQLite backend: fall back to filesystem artifact logging.
+				for fname, img in (images or {}).items():
+					if img is not None:
+						mlflow.log_image(img, fname)
+				for fname, obj in (artifacts or {}).items():
+					if obj is not None:
+						mlflow.log_dict(dict(obj), fname)
+
+		# Write BLOBs after the run is committed to minimise lock contention.
+		if sqlite_store and run_uuid:
+			_store_blobs(run_uuid, blobs)
+	except Exception as exc:  # pragma: no cover - tracking must not break inference
+		logger.debug('log_inference falhou (ignorado): %s', exc)
