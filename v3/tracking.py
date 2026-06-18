@@ -170,6 +170,27 @@ def _store_blobs(run_uuid: str, blobs: list) -> None:
 		con.close()
 
 
+def _store_metadata(image_sha: str, meta: Mapping) -> None:
+	"""Persist image metadata (EXIF etc.) keyed by the image sha256, so it is
+	stored once per unique image (table image_metadata)."""
+	path = _sqlite_path()
+	if not path or not image_sha or meta is None:
+		return
+	import sqlite3, time, json
+	con = sqlite3.connect(path, timeout=30)
+	try:
+		con.execute(
+			'CREATE TABLE IF NOT EXISTS image_metadata ('
+			' image_sha256 TEXT PRIMARY KEY, metadata TEXT, created REAL)')
+		con.execute(
+			'INSERT OR REPLACE INTO image_metadata (image_sha256, metadata, created)'
+			' VALUES (?,?,?)',
+			(image_sha, json.dumps(dict(meta), ensure_ascii=False), time.time()))
+		con.commit()
+	finally:
+		con.close()
+
+
 def log_inference(
 	name: str,
 	*,
@@ -177,6 +198,7 @@ def log_inference(
 	metrics: Mapping | None = None,
 	images: Mapping | None = None,
 	artifacts: Mapping | None = None,
+	metadata: Mapping | None = None,
 	tags: Mapping | None = None,
 	experiment: str = 'inference',
 ) -> None:
@@ -211,9 +233,11 @@ def log_inference(
 		# in the DB is tied to — and dedup-able by — its source image.
 		tags = dict(tags or {})
 		recv = next((d for (n, k, m, d) in blobs if n == 'received.png'), None)
+		recv_sha = None
 		if recv is not None:
 			import hashlib
-			tags.setdefault('image_sha256', hashlib.sha256(recv).hexdigest())
+			recv_sha = hashlib.sha256(recv).hexdigest()
+			tags.setdefault('image_sha256', recv_sha)
 
 		sqlite_store = _sqlite_path() is not None
 		run_uuid = None
@@ -233,5 +257,9 @@ def log_inference(
 		# Write BLOBs after the run is committed to minimise lock contention.
 		if sqlite_store and run_uuid:
 			_store_blobs(run_uuid, blobs)
+
+		# Metadados ficam guardados pela hash da imagem (uma vez por imagem única).
+		if sqlite_store and recv_sha and metadata is not None:
+			_store_metadata(recv_sha, metadata)
 	except Exception as exc:  # pragma: no cover - tracking must not break inference
 		logger.debug('log_inference falhou (ignorado): %s', exc)

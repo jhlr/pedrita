@@ -3,6 +3,7 @@ try:
 	from . import helper
 	from . import tracking
 	from . import gemini
+	from .metadata import *
 	# from . import localize  # disabled
 	from .dset import *
 	from .predict import *
@@ -13,6 +14,7 @@ except Exception:
 	import helper
 	import tracking
 	import gemini
+	from metadata import *
 	# import localize  # disabled
 	from dset import *
 	from predict import *

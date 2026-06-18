@@ -22,7 +22,7 @@ except ImportError:
 __all__ = ['heatmap', 'heatmap_context', 'predict', 'evaluate_folder', 'predict_grid', 'heatmap_grid']
 
 @helper.timer
-def heatmap(img_rgb, minmax: bool = False, return_grey: bool = False, track: bool = True):
+def heatmap(img_rgb, minmax: bool = False, return_grey: bool = False, track: bool = True, metadata=None):
 	with helper.rlock:
 		device = helper.best_device()
 		helper.model.eval()
@@ -75,6 +75,7 @@ def heatmap(img_rgb, minmax: bool = False, return_grey: bool = False, track: boo
 			params={'prob_real': prob_real},
 			metrics={'prob_real': prob_real, 'manipulation_pct': (1.0 - prob_real) * 100.0},
 			images={'received.png': img_rgb, 'heatmap.png': heatmap_img},
+			metadata=metadata,
 			tags={'kind': 'heatmap'},
 		)
 
@@ -83,7 +84,7 @@ def heatmap(img_rgb, minmax: bool = False, return_grey: bool = False, track: boo
 	return prob_real, heatmap_img
 
 
-def heatmap_context(img_rgb, lang: str = 'Portuguese', gemini_model=None):
+def heatmap_context(img_rgb, lang: str = 'Portuguese', gemini_model=None, metadata=None):
 	"""Forensic heatmap + Gemini context on the SAME image, as one MLflow run.
 
 	Runs both analyses with their individual tracking suppressed and logs a single
@@ -115,6 +116,7 @@ def heatmap_context(img_rgb, lang: str = 'Portuguese', gemini_model=None):
 		},
 		images={'received.png': img_rgb, 'heatmap.png': heatmap_img},
 		artifacts={'context.json': ctx},
+		metadata=metadata,
 		tags={'kind': 'heatmap_context', 'manipulation_type': ctx.get('manipulation_type')},
 	)
 
