@@ -36,6 +36,7 @@ _API_ENV = ('GEMINI_API_KEY', 'GOOGLE_API_KEY')
 CRITICALITY_CATEGORIES = (
 	'celebrity', 'child', 'sensitive_data', 'politician',
 	'public_figure', 'violence', 'medical', 'document',
+	'alcohol', 'drugs',
 )
 # How the image was manipulated (best guess). 'none' = looks authentic.
 MANIPULATION_TYPES = (
@@ -112,7 +113,7 @@ _CONTEXT_PROMPT = (
 	'       "level": one of "low", "medium", "high" — how sensitive the subject is.\n'
 	'       "categories": array, any of '
 	'["celebrity","child","sensitive_data","politician","public_figure",'
-	'"violence","medical","document"] that apply (empty if none).\n'
+	'"violence","medical","document","alcohol","drugs"] that apply (empty if none).\n'
 	'  "manipulation_certainty": number 0-100 — your confidence (%) that the image '
 	'was AI-generated or digitally manipulated.\n'
 	'  "manipulation_type": one of "face_swap","splice_composite","inpainting",'
