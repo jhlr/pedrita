@@ -1,5 +1,10 @@
-try:
-	# Import submodules as modules to keep live references (avoid `from ... import *`)
+# Imports diretos — SEM try/except mascarando o erro real. Se uma dependência
+# faltar, o ImportError verdadeiro (ex.: "No module named 'mlflow'") propaga, em
+# vez de virar um enganoso "cannot import name ... / No module named 'helper'".
+#
+# Em contexto de pacote (ex.: api.pedrita.v3) usamos imports relativos; rodando
+# como script (`python v3`, sem pacote), usamos imports absolutos.
+if __package__:
 	from . import helper
 	from . import tracking
 	from . import context_base
@@ -11,8 +16,7 @@ try:
 	from .predict import *
 	# from .video import *  # disabled
 	from .train import *
-except Exception:
-	# Fallback for environments where package context still isn't available
+else:
 	import helper
 	import tracking
 	import context_base
@@ -30,5 +34,3 @@ set_model = helper.set_model
 best_device = helper.best_device
 
 def __getattr__(name: str): return getattr(helper, name)
-
-
