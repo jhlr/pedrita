@@ -14,7 +14,9 @@ Nome da solução desenvolvida: Veritas
 
 Breve descrição
 
-Esta solução (Veritas, também referida como Pedrita no repositório) contém utilitários, modelos e scripts para treino e inferência de classificadores de imagem (com foco em detecção de manipulação/deepfake) usados no projeto. O pacote principal está em `v3/` e expõe helpers para treino, predição e avaliação, além de uma camada opcional de análise de contexto via Gemini. O acompanhamento de experimentos é feito com MLflow.
+Esta solução (Veritas, também referida como Pedrita no repositório) contém utilitários, modelos e scripts para treino e inferência de classificadores de imagem (com foco em detecção de manipulação/deepfake) usados no projeto. O pacote principal está em `v3/` e expõe helpers para treino, predição e avaliação, além de uma camada de **análise de contexto plugável** (Gemini ou OpenAI/GPT), leitura de **metadados EXIF** e **cache por hash da imagem**. O acompanhamento de experimentos é feito com MLflow, que também armazena imagens e laudos de forma deduplicada (por hash).
+
+> Este pacote é consumido pela API do projeto ([ndrfelipe/veritas](https://github.com/ndrfelipe/veritas)), onde entra como **submódulo git** em `api/pedrita`.
 
 Links do projeto
 
@@ -23,7 +25,7 @@ Links do projeto
 
 Estrutura principal
 
-- `v3/` — pacote principal com helpers, dataset, treino, predição, tracking (MLflow) e análise de contexto (Gemini).
+- `v3/` — pacote principal com helpers, dataset, treino, predição, tracking (MLflow), metadados (EXIF) e análise de contexto (Gemini/OpenAI).
 - `models/` — modelos serializados (`.pkl`, `.joblib`).
 - `dataset/`, `faces/`, `ciplab/`, `diffusion/`, `outputs/` — pastas de dados e saídas.
 - `pipeline.py` — exemplo de pipeline de treino/avaliação usado por desenvolvedores.
@@ -42,7 +44,7 @@ source .venv/bin/activate
 pip install -r v3/requirements.txt
 ```
 
-OBS: o `requirements.txt` dentro de `v3/` lista dependências úteis como `torch`, `timm`, `torchvision`, `joblib`, `Pillow`, `mlflow`, `scikit-learn` e (para a camada de contexto) `google-genai` e `python-dotenv`.
+OBS: o `requirements.txt` dentro de `v3/` lista dependências úteis como `torch`, `timm`, `torchvision`, `joblib`, `Pillow`, `mlflow`, `scikit-learn` e (para a camada de contexto) `google-genai`, `openai` e `python-dotenv`.
 
 Como executar (instruções detalhadas)
 
@@ -127,7 +129,8 @@ Formato do JSON retornado por `context()`:
   "criticality": {
     "level": "low",
     "categories": ["celebrity", "child", "sensitive_data", "politician",
-                   "public_figure", "violence", "medical", "document"]
+                   "public_figure", "violence", "medical", "document",
+                   "alcohol", "drugs"]
   },
   "manipulation_certainty": 0,
   "manipulation_type": "none",
@@ -142,12 +145,61 @@ Campos e domínios:
 - `scene_description` (str) — o que a imagem mostra.
 - `coherence.plausible` (bool) e `coherence.opinion` (str) — se a cena faz sentido físico/lógico, e por quê.
 - `criticality.level` — `low` | `medium` | `high`.
-- `criticality.categories` — subconjunto de `celebrity`, `child`, `sensitive_data`, `politician`, `public_figure`, `violence`, `medical`, `document`.
+- `criticality.categories` — subconjunto de `celebrity`, `child`, `sensitive_data`, `politician`, `public_figure`, `violence`, `medical`, `document`, `alcohol`, `drugs`.
 - `manipulation_certainty` (float 0–100) — confiança (%) de manipulação, segundo o Gemini.
 - `manipulation_type` — `face_swap` | `splice_composite` | `inpainting` | `fully_generated` | `edited` | `none`.
 - `suspect_regions` (list[str]) — onde a manipulação parece estar, em texto.
 - `evidence` (list[str]) — pistas visuais que sustentam a análise.
 - `recommended_action` — `publish` | `human_review` | `block`.
+
+Provider de contexto plugável (Gemini ou OpenAI/GPT)
+
+O laudo contextual pode vir do Gemini ou da OpenAI (GPT). Os dois compartilham o mesmo
+prompt, parsing, normalização e logging (o núcleo vive em `v3/gemini.py:analyze`) — só a
+chamada à API difere, então **o contrato de saída é idêntico** independentemente de quem
+gerou. Útil quando a cota gratuita do Gemini esgota.
+
+```python
+import v3 as pedrita
+
+ctx = pedrita.gemini.context('quarto.png')          # via Gemini   (GEMINI_API_KEY)
+ctx = pedrita.openai_vision.context('quarto.png')   # via GPT      (OPENAI_API_KEY, OPENAI_MODEL=gpt-4o-mini)
+print(ctx['provider'], ctx['model'], ctx['cached'])
+```
+
+Todo resultado carrega a **origem** do laudo: `provider` (`gemini`/`openai`), `model` e
+`cached` (bool).
+
+Cache por hash
+
+Antes de chamar o provider, a pedrita calcula o hash (sha256) da imagem e procura um
+`context.json` já registrado para aquela imagem no MLflow. Se existir, **devolve o laudo
+em cache** (com `cached=True`) sem gastar cota/custo. A origem (provider/modelo) também é
+preservada, então um cache-hit ainda sabe quem gerou o laudo.
+
+Metadados (EXIF)
+
+`v3/metadata.py` lê metadados EXIF da imagem (câmera, software de edição, data/hora, GPS) e
+deriva flags úteis (ex.: "Sem metadados EXIF...", "Editada em software: ..."). São
+armazenados por hash no MLflow e usados como sinal complementar.
+
+```python
+meta = pedrita.metadata(image_bytes_or_path)
+```
+
+Forense + contexto numa só chamada (`heatmap_context`)
+
+Para rodar o detector forense (com heatmap) e a análise contextual sobre a **mesma**
+imagem registrando tudo num único run do MLflow (imagem guardada uma vez), use
+`heatmap_context`:
+
+```python
+result, heatmap_img = pedrita.heatmap_context('quarto.png')                 # provider default
+result, heatmap_img = pedrita.heatmap_context('quarto.png', context_fn=pedrita.openai_vision.context)
+```
+
+> Observação: `predict.heatmap(...)` agora tem assinatura keyword-only para os opcionais
+> (`minmax`, `return_grey`, `track`, `metadata`).
 
 Onde estão as implementações
 
@@ -155,8 +207,10 @@ Onde estão as implementações
 - `v3/predict.py` — rotinas de predição/avaliação e helpers para gerar heatmaps/visualizações.
 - `v3/train.py` — loop de treino (com validação) e hooks.
 - `v3/dset.py` — definição de `DirDataset` e outros datasets.
-- `v3/tracking.py` — integração canônica com MLflow (métricas em `train/*` e `eval/*`, backend SQLite).
-- `v3/gemini.py` — análise de contexto via Gemini (`context()`).
+- `v3/tracking.py` — integração com MLflow (métricas `train/*` e `eval/*`, backend SQLite) + armazenamento de artefatos/imagens **por hash** (deduplicado) e `find_context` (cache).
+- `v3/gemini.py` — análise de contexto via Gemini + **núcleo compartilhado** (`analyze`, `normalize`, `log_context`) reutilizado pelos demais providers.
+- `v3/openai_vision.py` — análise de contexto via OpenAI/GPT (`context()`), reaproveitando o núcleo de `gemini.py`.
+- `v3/metadata.py` — leitura de metadados EXIF (`metadata()`).
 
 Links rápidos (arquivo no repo):
 - [v3/helper.py](v3/helper.py)
@@ -165,6 +219,8 @@ Links rápidos (arquivo no repo):
 - [v3/dset.py](v3/dset.py)
 - [v3/tracking.py](v3/tracking.py)
 - [v3/gemini.py](v3/gemini.py)
+- [v3/openai_vision.py](v3/openai_vision.py)
+- [v3/metadata.py](v3/metadata.py)
 
 Contribuição
 
