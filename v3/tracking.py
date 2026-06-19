@@ -23,6 +23,23 @@ import mlflow
 
 logger = logging.getLogger(__name__)
 
+# Mensagem acionável para o erro mais comum com o mlflow.db: o arquivo SQLite fica
+# somente-leitura/travado quando é restaurado/sobrescrito (git checkout, troca de
+# branch, stash) com um processo (uvicorn) ainda segurando a conexão antiga.
+_DB_LOCKED_HELP = (
+	"mlflow.db está somente-leitura ou travado. Isso costuma acontecer quando o arquivo "
+	"foi restaurado/sobrescrito (git checkout, troca de branch, stash) com a API ainda "
+	"rodando — o processo segura um handle do arquivo antigo. COMO RESOLVER: pare o "
+	"uvicorn e reinicie-o para reabrir o DB. O tracking é opcional e não afeta a predição."
+)
+
+
+def _is_db_locked_error(exc: Exception) -> bool:
+	"""True se a exceção for o erro de SQLite somente-leitura/travado."""
+	msg = str(exc).lower()
+	return ('readonly database' in msg or 'read-only database' in msg
+		or 'database is locked' in msg)
+
 # Anchor the store to the package dir (api/pedrita) so the DB and artifacts land
 # in the same place no matter the process CWD (e.g. uvicorn started from backend/).
 _PKG_DIR = Path(__file__).resolve().parents[1]
@@ -221,7 +238,10 @@ def find_context(image_sha: str):
 			(image_sha,)).fetchone()
 		return json.loads(row[0]) if row else None
 	except Exception as exc:
-		logger.debug('find_context falhou (ignorado): %s', exc)
+		if _is_db_locked_error(exc):
+			logger.warning('%s (detalhe: %s)', _DB_LOCKED_HELP, exc)
+		else:
+			logger.debug('find_context falhou (ignorado): %s', exc)
 		return None
 	finally:
 		con.close()
@@ -298,4 +318,7 @@ def log_inference(
 		if sqlite_store and recv_sha and metadata is not None:
 			_store_metadata(recv_sha, metadata)
 	except Exception as exc:  # pragma: no cover - tracking must not break inference
-		logger.debug('log_inference falhou (ignorado): %s', exc)
+		if _is_db_locked_error(exc):
+			logger.warning('%s (detalhe: %s)', _DB_LOCKED_HELP, exc)
+		else:
+			logger.debug('log_inference falhou (ignorado): %s', exc)
