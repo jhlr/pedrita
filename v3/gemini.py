@@ -65,9 +65,19 @@ def _get_client():
 	return _client
 
 
+# Maior lado enviado ao provider de visão. Cap reduz tokens/custo sem perder
+# qualidade para esta tarefa (0 = não redimensiona). Override por env.
+CONTEXT_MAX_SIDE = int(os.environ.get('CONTEXT_MAX_SIDE', '1024'))
+
+
 def _load(img) -> pil.Image:
 	out = img if isinstance(img, pil.Image) else pil.open(str(img))
-	return out.convert('RGB')
+	out = out.convert('RGB')
+	# Downscale (cópia, nunca muta a imagem do chamador) antes de enviar ao provider.
+	if CONTEXT_MAX_SIDE and max(out.size) > CONTEXT_MAX_SIDE:
+		out = out.copy()
+		out.thumbnail((CONTEXT_MAX_SIDE, CONTEXT_MAX_SIDE), pil.Resampling.LANCZOS)
+	return out
 
 
 def _generate(image, prompt: str, model: Optional[str], temperature: float) -> str:
@@ -130,16 +140,12 @@ _CONTEXT_PROMPT = (
 )
 
 
-def context(img, model: Optional[str] = None, lang: str = 'Portuguese', track: bool = True) -> Dict:
-	"""Return a structured contextual analysis of the image.
+def normalize(data: dict) -> Dict:
+	"""Validate/normalize a raw model dict into the canonical context structure.
 
-	Keys: scene_description (str), coherence ({plausible, opinion}),
-	criticality ({level, categories}), manipulation_certainty (float 0-100).
+	Shared across providers (Gemini, OpenAI, ...) so the output contract is
+	identical no matter who generated it.
 	"""
-	image = _load(img)
-	raw = _generate(image, _CONTEXT_PROMPT.format(lang=lang), model, 0.2)
-	data = _parse_obj(raw)
-
 	coh = data.get('coherence') or {}
 	crit = data.get('criticality') or {}
 	level = str(crit.get('level', 'low')).strip().lower()
@@ -160,7 +166,7 @@ def context(img, model: Optional[str] = None, lang: str = 'Portuguese', track: b
 	regions = [str(s).strip() for s in (data.get('suspect_regions') or []) if str(s).strip()]
 	evidence = [str(s).strip() for s in (data.get('evidence') or []) if str(s).strip()]
 
-	result = {
+	return {
 		'scene_description': str(data.get('scene_description', '')).strip(),
 		'coherence': {
 			'plausible': bool(coh.get('plausible', True)),
@@ -175,20 +181,64 @@ def context(img, model: Optional[str] = None, lang: str = 'Portuguese', track: b
 		# 'text_in_image': str(data.get('text_in_image', '')).strip(),  # OCR (disabled)
 	}
 
-	# Persist received image + generated context as an MLflow run (best-effort;
-	# imported lazily so this module stays usable without torch/mlflow installed).
+
+def log_context(run_name: str, image, result: Dict, track: bool = True) -> None:
+	"""Persist received image + generated context as one MLflow run (best-effort).
+
+	Shared by every provider so the storage is identical (image by hash,
+	context.json as artifact). Imported lazily to keep this usable without mlflow.
+	"""
+	if not track:
+		return
+	try:
+		from . import tracking
+	except Exception:
+		return
+	tracking.log_inference(
+		run_name,
+		params={'manipulation_certainty': result['manipulation_certainty'],
+			'criticality': result['criticality']['level']},
+		metrics={'manipulation_certainty': result['manipulation_certainty']},
+		images={'received.png': image},
+		artifacts={'context.json': result},
+		tags={'kind': run_name, 'manipulation_type': result['manipulation_type']},
+	)
+
+
+def analyze(generate_fn, run_name: str, img, model, lang: str, track: bool,
+		default_model: Optional[str] = None) -> Dict:
+	"""Núcleo compartilhado: load → cache por hash → gera → normaliza → loga.
+
+	Se a imagem já tiver um context.json no DB (mesma hash), retorna o cacheado
+	e NÃO chama o provider — economiza cota/custo. A origem (provider + modelo)
+	fica gravada no resultado, então um cache-hit também sabe quem gerou o laudo.
+	`generate_fn(image, prompt, model, temperature)` é a parte específica do provider.
+	"""
+	image = _load(img)
 	try:
 		from . import tracking
 	except Exception:
 		tracking = None
-	if track and tracking is not None:
-		tracking.log_inference(
-			'gemini',
-			params={'manipulation_certainty': certainty, 'criticality': level},
-			metrics={'manipulation_certainty': certainty},
-			images={'received.png': image},
-			artifacts={'context.json': result},
-			tags={'kind': 'gemini', 'manipulation_type': mtype},
-		)
-
+	if tracking is not None:
+		sha = tracking.image_sha256(image)
+		cached = tracking.find_context(sha) if sha else None
+		if cached is not None:
+			cached['cached'] = True
+			return cached
+	model = model or default_model
+	raw = generate_fn(image, _CONTEXT_PROMPT.format(lang=lang), model, 0.2)
+	result = normalize(_parse_obj(raw))
+	result['provider'] = run_name
+	result['model'] = model
+	result['cached'] = False
+	log_context(run_name, image, result, track)
 	return result
+
+
+def context(img, model: Optional[str] = None, lang: str = 'Portuguese', track: bool = True) -> Dict:
+	"""Structured contextual analysis of the image, via Gemini (com cache por hash).
+
+	Keys: scene_description (str), coherence ({plausible, opinion}),
+	criticality ({level, categories}), manipulation_certainty (float 0-100).
+	"""
+	return analyze(_generate, 'gemini', img, model, lang, track, default_model=MODEL)

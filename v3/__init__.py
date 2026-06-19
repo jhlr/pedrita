@@ -3,6 +3,7 @@ try:
 	from . import helper
 	from . import tracking
 	from . import gemini
+	from . import openai_vision
 	from .metadata import *
 	# from . import localize  # disabled
 	from .dset import *
@@ -14,6 +15,7 @@ except Exception:
 	import helper
 	import tracking
 	import gemini
+	import openai_vision
 	from metadata import *
 	# import localize  # disabled
 	from dset import *

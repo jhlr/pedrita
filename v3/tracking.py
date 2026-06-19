@@ -191,6 +191,42 @@ def _store_metadata(image_sha: str, meta: Mapping) -> None:
 		con.close()
 
 
+def image_sha256(image) -> str | None:
+	"""sha256 do PNG da imagem — a mesma chave usada para armazenar/dedupe."""
+	data = _png_bytes(image)
+	if not data:
+		return None
+	import hashlib
+	return hashlib.sha256(data).hexdigest()
+
+
+def find_context(image_sha: str):
+	"""Retorna um context.json já armazenado para esta imagem (por hash), ou None.
+
+	Permite pular a chamada ao provider (Gemini/GPT) quando a imagem já foi
+	analisada. Best-effort: qualquer erro (tabela ausente, DB indisponível) → None.
+	"""
+	path = _sqlite_path()
+	if not path or not image_sha:
+		return None
+	import sqlite3, json
+	con = sqlite3.connect(path, timeout=30)
+	try:
+		row = con.execute(
+			'SELECT b.data FROM inference_artifacts ia '
+			'JOIN artifact_blobs b ON b.sha256 = ia.sha256 '
+			"WHERE ia.name = 'context.json' AND ia.run_uuid IN ("
+			"  SELECT run_uuid FROM inference_artifacts WHERE name = 'received.png' AND sha256 = ?) "
+			'ORDER BY ia.id DESC LIMIT 1',
+			(image_sha,)).fetchone()
+		return json.loads(row[0]) if row else None
+	except Exception as exc:
+		logger.debug('find_context falhou (ignorado): %s', exc)
+		return None
+	finally:
+		con.close()
+
+
 def log_inference(
 	name: str,
 	*,

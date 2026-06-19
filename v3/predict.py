@@ -22,7 +22,12 @@ except ImportError:
 __all__ = ['heatmap', 'heatmap_context', 'predict', 'evaluate_folder', 'predict_grid', 'heatmap_grid']
 
 @helper.timer
-def heatmap(img_rgb, minmax: bool = False, return_grey: bool = False, track: bool = True, metadata=None):
+def heatmap(img_rgb, /, *,
+	minmax: bool = False, 
+	return_grey: bool = False, 
+	track: bool = True, 
+	metadata=None,
+) -> tuple[float, pil.Image]: 
 	with helper.rlock:
 		device = helper.best_device()
 		helper.model.eval()
@@ -74,33 +79,37 @@ def heatmap(img_rgb, minmax: bool = False, return_grey: bool = False, track: boo
 			'heatmap',
 			params={'prob_real': prob_real},
 			metrics={'prob_real': prob_real, 'manipulation_pct': (1.0 - prob_real) * 100.0},
-			images={'received.png': img_rgb, 'heatmap.png': heatmap_img},
+			images={'received.png': img_rgb},  # heatmap não é guardado (barato de regerar)
 			metadata=metadata,
 			tags={'kind': 'heatmap'},
 		)
 
 	if return_grey:
-		return prob_real, heatmap_img, greyscale
+		return prob_real, heatmap_img, greyscale # type: ignore
 	return prob_real, heatmap_img
 
 
-def heatmap_context(img_rgb, lang: str = 'Portuguese', gemini_model=None, metadata=None):
-	"""Forensic heatmap + Gemini context on the SAME image, as one MLflow run.
+def heatmap_context(img_rgb, lang: str = 'Portuguese', gemini_model=None, metadata=None, context_fn=None):
+	"""Forensic heatmap + contextual analysis on the SAME image, as one MLflow run.
 
 	Runs both analyses with their individual tracking suppressed and logs a single
 	combined run, so the received image is stored ONCE and tied to both results
-	(no duplication in the DB). Returns ``(prob_real, heatmap_img, context)``.
+	(no duplication in the DB). ``context_fn`` lets the caller pick the provider
+	(gemini.context, openai_vision.context, ...); defaults to Gemini.
+	Returns ``(prob_real, heatmap_img, context)``.
 	"""
 	if isinstance(img_rgb, (str, Path)):
 		img_rgb = pil.open(str(img_rgb)).convert('RGB')
 
 	prob_real, heatmap_img = heatmap(img_rgb, track=False)
 
-	try:
-		from . import gemini
-	except ImportError:
-		import gemini
-	ctx = gemini.context(img_rgb, model=gemini_model, lang=lang, track=False)
+	if context_fn is None:
+		try:
+			from . import gemini
+		except ImportError:
+			import gemini
+		context_fn = gemini.context
+	ctx = context_fn(img_rgb, model=gemini_model, lang=lang, track=False)
 
 	try: certainty = float(ctx.get('manipulation_certainty') or 0)
 	except (TypeError, ValueError): certainty = 0.0
@@ -114,7 +123,7 @@ def heatmap_context(img_rgb, lang: str = 'Portuguese', gemini_model=None, metada
 			'manipulation_pct': (1.0 - prob_real) * 100.0,
 			'manipulation_certainty': certainty,
 		},
-		images={'received.png': img_rgb, 'heatmap.png': heatmap_img},
+		images={'received.png': img_rgb},  # heatmap não é guardado (barato de regerar)
 		artifacts={'context.json': ctx},
 		metadata=metadata,
 		tags={'kind': 'heatmap_context', 'manipulation_type': ctx.get('manipulation_type')},
