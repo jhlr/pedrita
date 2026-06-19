@@ -226,6 +226,17 @@ Links rápidos (arquivo no repo):
 - [v3/openai_vision.py](v3/openai_vision.py)
 - [v3/metadata.py](v3/metadata.py)
 
+Solução de problemas
+
+- `sqlite3.OperationalError: attempt to write a readonly database` (ou `database is locked`)
+  ao mexer no `mlflow.db`: acontece quando se **restaura/sobrescreve o `mlflow.db`**
+  (ex.: `git checkout -- mlflow.db`, `git stash`, trocar de branch) **enquanto um processo
+  ainda tem a conexão MLflow aberta** — tipicamente o `uvicorn` da API rodando. O processo
+  fica segurando um handle do arquivo antigo (já substituído) e não consegue mais escrever.
+  Solução: **pare o processo antes** de restaurar o arquivo, e **reinicie o `uvicorn`** depois.
+  O tracking é best-effort e nunca quebra a predição, mas as escritas no DB ficam silenciosamente
+  perdidas até reiniciar.
+
 Contribuição
 
 - Abra issues para bugs ou melhorias.
