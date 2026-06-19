@@ -2,6 +2,7 @@ try:
 	# Import submodules as modules to keep live references (avoid `from ... import *`)
 	from . import helper
 	from . import tracking
+	from . import context_base
 	from . import gemini
 	from . import openai_vision
 	from .metadata import *
@@ -14,6 +15,7 @@ except Exception:
 	# Fallback for environments where package context still isn't available
 	import helper
 	import tracking
+	import context_base
 	import gemini
 	import openai_vision
 	from metadata import *

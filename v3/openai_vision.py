@@ -1,25 +1,19 @@
-"""OpenAI (GPT) backed contextual analysis of an image.
+"""Provider de contexto via OpenAI (GPT).
 
-Drop-in alternative to `gemini.context` with the SAME output contract — it reuses
-the shared prompt, JSON parsing, field normalization and MLflow logging from
-`gemini`, so only the API call itself is provider-specific. Use it when the
-Gemini free-tier quota runs out, or simply prefer GPT.
+Alternativa drop-in ao `gemini`, com o MESMO contrato de saída: implementa apenas
+a chamada à API da OpenAI e delega prompt, parsing, normalização, cache e logging
+ao núcleo compartilhado em `context_base`. Use quando a cota gratuita do Gemini
+esgotar, ou simplesmente por preferir o GPT.
 
-Requires `openai` and OPENAI_API_KEY. No torch / model file needed.
+Requer `openai` e OPENAI_API_KEY; o .env é carregado pelo `context_base`. Não
+precisa de torch / arquivo de modelo.
 """
 from __future__ import annotations
 
 import os, io, base64
 from typing import Optional, Dict
 
-from . import gemini
-
-# Carrega .env (mesma estratégia do gemini.py) para OPENAI_API_KEY viver em arquivo.
-try:
-	from dotenv import load_dotenv, find_dotenv
-	load_dotenv(find_dotenv(usecwd=True))
-except ImportError:
-	pass
+from . import context_base as base
 
 __all__ = ['context', 'MODEL']
 
@@ -27,14 +21,14 @@ __all__ = ['context', 'MODEL']
 MODEL = os.environ.get('OPENAI_MODEL', 'gpt-4o-mini')
 _API_ENV = ('OPENAI_API_KEY',)
 
-_client = None  # lazy singleton
+_client = None  # singleton preguiçoso
 
 
 def _get_client():
 	global _client
 	if _client is not None:
 		return _client
-	key = next((os.environ[k] for k in _API_ENV if os.environ.get(k)), None)
+	key = base.resolve_key(_API_ENV)
 	if not key:
 		raise RuntimeError(f'No OpenAI API key found. Set one of {_API_ENV}.')
 	try:
@@ -52,6 +46,7 @@ def _data_url(image) -> str:
 
 
 def _generate(image, prompt: str, model: Optional[str], temperature: float) -> str:
+	"""Parte específica do provider: uma chamada ao GPT, retornando texto cru."""
 	client = _get_client()
 	resp = client.chat.completions.create(
 		model=model or MODEL,
@@ -69,10 +64,8 @@ def _generate(image, prompt: str, model: Optional[str], temperature: float) -> s
 
 
 def context(img, model: Optional[str] = None, lang: str = 'Portuguese', track: bool = True) -> Dict:
-	"""Structured contextual analysis of the image, via OpenAI (GPT).
+	"""Análise contextual estruturada da imagem, via OpenAI/GPT (com cache por hash).
 
-	Mesmo retorno de `gemini.context` (e mesmo cache por hash): scene_description,
-	coherence, criticality, manipulation_certainty, manipulation_type,
-	suspect_regions, evidence, recommended_action.
+	Mesmo retorno de qualquer provider — ver `context_base` para o contrato.
 	"""
-	return gemini.analyze(_generate, 'openai', img, model, lang, track, default_model=MODEL)
+	return base.analyze(_generate, 'openai', img, model, lang, track, default_model=MODEL)

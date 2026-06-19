@@ -155,9 +155,11 @@ Campos e domínios:
 Provider de contexto plugável (Gemini ou OpenAI/GPT)
 
 O laudo contextual pode vir do Gemini ou da OpenAI (GPT). Os dois compartilham o mesmo
-prompt, parsing, normalização e logging (o núcleo vive em `v3/gemini.py:analyze`) — só a
-chamada à API difere, então **o contrato de saída é idêntico** independentemente de quem
-gerou. Útil quando a cota gratuita do Gemini esgota.
+prompt, parsing, normalização, cache e logging — o núcleo agnóstico de provider vive em
+`v3/context_base.py` (`analyze`, `normalize`, `load_image`, `parse_json_object`, ...).
+Cada provider (`v3/gemini.py`, `v3/openai_vision.py`) só implementa a chamada à própria
+API e delega o resto à base, então **o contrato de saída é idêntico** independentemente de
+quem gerou. Útil quando a cota gratuita do Gemini esgota.
 
 ```python
 import v3 as pedrita
@@ -208,8 +210,9 @@ Onde estão as implementações
 - `v3/train.py` — loop de treino (com validação) e hooks.
 - `v3/dset.py` — definição de `DirDataset` e outros datasets.
 - `v3/tracking.py` — integração com MLflow (métricas `train/*` e `eval/*`, backend SQLite) + armazenamento de artefatos/imagens **por hash** (deduplicado) e `find_context` (cache).
-- `v3/gemini.py` — análise de contexto via Gemini + **núcleo compartilhado** (`analyze`, `normalize`, `log_context`) reutilizado pelos demais providers.
-- `v3/openai_vision.py` — análise de contexto via OpenAI/GPT (`context()`), reaproveitando o núcleo de `gemini.py`.
+- `v3/context_base.py` — **núcleo compartilhado** de contexto (prompt, parsing, `normalize`, cache por hash, `log_context`, `analyze`), agnóstico de provider.
+- `v3/gemini.py` — provider de contexto via Gemini (`context()`), delega à base.
+- `v3/openai_vision.py` — provider de contexto via OpenAI/GPT (`context()`), delega à base.
 - `v3/metadata.py` — leitura de metadados EXIF (`metadata()`).
 
 Links rápidos (arquivo no repo):
@@ -218,6 +221,7 @@ Links rápidos (arquivo no repo):
 - [v3/train.py](v3/train.py)
 - [v3/dset.py](v3/dset.py)
 - [v3/tracking.py](v3/tracking.py)
+- [v3/context_base.py](v3/context_base.py)
 - [v3/gemini.py](v3/gemini.py)
 - [v3/openai_vision.py](v3/openai_vision.py)
 - [v3/metadata.py](v3/metadata.py)
