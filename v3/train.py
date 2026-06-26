@@ -85,8 +85,32 @@ def train(
 		threshold=0.005, min_lr=5e-6, cooldown=0, )
 	helper.model.to(device)
 	centropy = torch.nn.CrossEntropyLoss(reduction='none')
+
+	def _val_acc():
+		"""Validation accuracy (eval mode, no grad). None if no val set."""
+		if val_loader is None:
+			return None
+		helper.model.eval()
+		vc = vt = 0
+		with torch.no_grad():
+			for xb, yb in val_loader:
+				xb = xb.to(device, non_blocking=True)
+				yb = yb.long().to(device, non_blocking=True)
+				preds = helper.expand(helper.model(xb)).argmax(dim=1)
+				vc += int((preds == yb).sum()); vt += int(yb.size(0))
+		return vc / vt if vt else 0.0
+
+	# Baseline BEFORE training: gives the chart a starting point (step 0) and a
+	# fallback — best_val is seeded with the pre-training score, so a training run
+	# that beats nothing leaves the original weights untouched.
+	base_val = _val_acc()
+	if base_val is not None:
+		best_val = base_val
+		best_state = copy.deepcopy(helper.model.state_dict())
+		print(f'Baseline val_acc={base_val:.3f}')
+	tracking.log_metrics({'val/acc': base_val, 'train/lr': lr}, step=0)
 	print('Starting training...')
-	
+
 	for epoch in range(epochs):
 
 		with helper.wlock:
@@ -131,22 +155,12 @@ def train(
 			train_acc = correct_total.item() / total if total > 0 else 0.0
 			avg_loss = total_loss.item() / (selected_total if selected_total > 0 else 1)
 
-			# Simple validation pass (eval mode, no grad). Falls back to train_acc
-			# for scheduling only when no val set was provided.
-			val_acc = None
-			if val_loader is not None:
-				helper.model.eval()
-				vc = vt = 0
-				with torch.no_grad():
-					for xb, yb in val_loader:
-						xb = xb.to(device, non_blocking=True)
-						yb = yb.long().to(device, non_blocking=True)
-						preds = helper.expand(helper.model(xb)).argmax(dim=1)
-						vc += int((preds == yb).sum()); vt += int(yb.size(0))
-				val_acc = vc / vt if vt else 0.0
-				if val_acc > best_val:
-					best_val = val_acc
-					best_state = copy.deepcopy(helper.model.state_dict())
+			# Validation pass. Falls back to train_acc for scheduling only when no
+			# val set was provided. Best epoch (by val) is kept; seeded with baseline.
+			val_acc = _val_acc()
+			if val_acc is not None and val_acc > best_val:
+				best_val = val_acc
+				best_state = copy.deepcopy(helper.model.state_dict())
 
 			scheduler.step(val_acc if val_acc is not None else train_acc)
 			current_lr = opt.param_groups[0]['lr']
@@ -156,7 +170,7 @@ def train(
 			'train/loss': total_loss.item() / (selected_total if selected_total > 0 else 1),
 			'train/acc': correct_total.item() / total if total > 0 else 0.0,
 			'val/acc': val_acc,
-		}, step=epoch)
+		}, step=epoch + 1)
 
 		print(dt.now() - now)
 		print(f'Epoch {epoch+1}/{epochs}',
@@ -185,6 +199,7 @@ def merge(*models: nn.Module) -> nn.Module:
 		out_model.load_state_dict(merged)
 		return out_model
 
+# desativado por enquanto
 TRAIN_BUFFER: list[tuple[Tensor, int]] = None # type: ignore
 def online_training(
 	samples: Sequence[pil.Image] | Tensor, 
